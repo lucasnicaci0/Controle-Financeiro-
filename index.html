@@ -1,0 +1,896 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rumo · suas finanças</title>
+<meta name="description" content="Controle de gastos e ganhos com um consultor financeiro.">
+<meta name="theme-color" content="#060a18">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root{
+  --bg:#060a18; --ink:#eaf0ff; --mute:#93a0c4; --line:rgba(255,255,255,.1);
+  --glass:rgba(255,255,255,.055); --a:#5eead4; --b:#818cf8; --c:#f472b6;
+  --good:#34d399; --warn:#fbbf24; --bad:#fb7185; --r:20px;
+}
+*{box-sizing:border-box}
+html{color-scheme:dark}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
+  font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden}
+#fx{position:fixed;inset:0;width:100%;height:100%;z-index:0}
+#app{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px 110px}
+[hidden]{display:none!important}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+
+.glass{background:var(--glass);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);
+  border:1px solid var(--line);border-radius:var(--r);box-shadow:0 10px 40px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.06)}
+.card{padding:20px}
+.card h3{margin:0 0 14px;font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.mute{color:var(--mute)}
+.small{font-size:12.5px}
+
+/* entrada animada */
+@keyframes rise{from{opacity:0;transform:translateY(22px) scale(.97)}to{opacity:1;transform:none}}
+.reveal{animation:rise .7s cubic-bezier(.2,.9,.3,1) both;animation-delay:calc(var(--i,0)*70ms)}
+.tilt{transition:transform .25s ease, box-shadow .25s ease;transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));will-change:transform}
+.tilt:hover{box-shadow:0 18px 60px rgba(94,234,212,.12), 0 10px 40px rgba(0,0,0,.35)}
+
+/* login */
+.login{min-height:100vh;display:grid;place-items:center;text-align:center;padding:24px 0}
+.login .box{max-width:520px;padding:44px 34px}
+.brand{display:inline-flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.02em}
+.logo{width:34px;height:34px;border-radius:11px;background:conic-gradient(from 200deg,var(--a),var(--b),var(--c),var(--a));
+  box-shadow:0 0 24px rgba(129,140,248,.55);animation:spin 9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.login h1{font-size:clamp(30px,6vw,46px);line-height:1.08;margin:22px 0 12px;letter-spacing:-.02em;
+  background:linear-gradient(100deg,#fff 10%,var(--a) 45%,var(--b) 70%,var(--c));-webkit-background-clip:text;background-clip:text;color:transparent;
+  background-size:200% 100%;animation:shine 8s ease-in-out infinite alternate}
+@keyframes shine{to{background-position:100% 0}}
+.login p{margin:0 0 26px;color:var(--mute)}
+#gbtn{display:flex;justify-content:center;min-height:44px;margin-bottom:14px}
+
+/* topo e navegação */
+.top{position:relative;z-index:35;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;margin-top:8px}
+.mes{display:flex;align-items:center;gap:6px}
+.mes b{min-width:132px;text-align:center;font-weight:600}
+.mes b::first-letter{text-transform:uppercase}
+.icon{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.05);cursor:pointer;display:grid;place-items:center;transition:.2s}
+.icon:hover:not(:disabled){background:rgba(255,255,255,.12);transform:scale(1.08)}
+.icon:disabled{opacity:.3;cursor:default}
+.user{position:relative}
+.avatar{width:38px;height:38px;border-radius:50%;border:0;cursor:pointer;font-weight:700;color:#06101f;background:linear-gradient(135deg,var(--a),var(--b))}
+.menu{position:absolute;right:0;top:46px;min-width:210px;padding:8px;z-index:40;animation:rise .25s both}
+.menu .who{padding:8px 10px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.menu button{display:block;width:100%;text-align:left;background:none;border:0;padding:9px 10px;border-radius:10px;cursor:pointer}
+.menu button:hover{background:rgba(255,255,255,.08)}
+.navwrap{position:sticky;top:10px;z-index:30;display:flex;justify-content:center;margin:14px 0 18px}
+.nav{position:relative;display:flex;gap:2px;padding:5px;overflow-x:auto;max-width:100%;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav button{position:relative;z-index:1;background:none;border:0;padding:9px 16px;border-radius:999px;cursor:pointer;color:var(--mute);white-space:nowrap;transition:color .3s}
+.nav button.on{color:var(--ink)}
+.ind{position:absolute;top:5px;bottom:5px;border-radius:999px;z-index:0;background:linear-gradient(120deg,rgba(94,234,212,.28),rgba(129,140,248,.3));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.16),0 0 24px rgba(129,140,248,.25);transition:left .5s cubic-bezier(.2,.9,.3,1.25),width .5s cubic-bezier(.2,.9,.3,1.25)}
+
+/* grades */
+.view{animation:rise .5s both}
+.grid{display:grid;gap:16px}
+.g-hero{grid-template-columns:1.4fr 1fr 1fr 1fr}
+.g-2{grid-template-columns:1.5fr 1fr}
+.g-eq{grid-template-columns:1fr 1fr}
+.g-cards{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.stack{display:grid;gap:16px;margin-top:16px}
+@media(max-width:900px){.g-hero,.g-2,.g-eq{grid-template-columns:1fr 1fr}.g-hero .hero{grid-column:1/-1}}
+@media(max-width:620px){.g-hero,.g-2,.g-eq{grid-template-columns:1fr}
+  .navwrap{position:fixed;bottom:max(12px,env(safe-area-inset-bottom));left:12px;right:12px;top:auto;margin:0}
+  .nav{width:100%}.nav button{padding:10px 12px;flex:1}
+  .top .brand span:last-child{display:none}.mes b{min-width:0;font-size:14px;white-space:nowrap}}
+
+.big{font-size:clamp(34px,5.4vw,52px);font-weight:700;letter-spacing:-.03em;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.pos{color:var(--good)}.neg{color:var(--bad)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.07);font-size:12px}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:0 0 10px currentColor}
+
+/* formulários */
+form.f{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end}
+.campo{display:grid;gap:5px}
+.campo span{font-size:12px;color:var(--mute)}
+input,select{width:100%;padding:11px 13px;border-radius:13px;border:1px solid var(--line);background:rgba(8,12,28,.6);transition:border .2s, box-shadow .2s}
+input:focus,select:focus{border-color:var(--a);box-shadow:0 0 0 3px rgba(94,234,212,.15);outline:0}
+select option{background:#0b1128}
+input[type=color]{padding:3px;height:44px}
+.btn{position:relative;overflow:hidden;border:0;border-radius:13px;padding:11px 18px;cursor:pointer;font-weight:600;color:#06101f;
+  background:linear-gradient(120deg,var(--a),var(--b));box-shadow:0 8px 26px rgba(94,234,212,.22);transition:transform .2s, box-shadow .2s, filter .2s}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 14px 34px rgba(129,140,248,.35)}
+.btn:active:not(:disabled){transform:scale(.97)}
+.btn:disabled{opacity:.5;cursor:wait}
+.btn.ghost{background:rgba(255,255,255,.07);color:var(--ink);box-shadow:none}
+.btn.danger{background:linear-gradient(120deg,#fb7185,#f472b6);color:#220510}
+.seg{display:inline-flex;padding:4px;border-radius:13px;background:rgba(255,255,255,.06);gap:4px}
+.seg button{border:0;background:none;padding:8px 16px;border-radius:10px;cursor:pointer;color:var(--mute);transition:.25s}
+.seg button.on{color:#06101f;background:linear-gradient(120deg,var(--a),var(--b))}
+.seg button.on.out{background:linear-gradient(120deg,var(--c),#fb7185)}
+
+/* listas */
+.lista{display:grid;gap:4px}
+.item{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:14px;transition:background .2s, transform .2s;animation:rise .5s both;animation-delay:calc(var(--i,0)*35ms)}
+.item:hover{background:rgba(255,255,255,.06);transform:translateX(3px)}
+.item .t{flex:1;min-width:0}
+.item .t b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.item .v{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.x{border:0;background:none;color:var(--mute);cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;border-radius:8px;transition:.2s}
+.x:hover{color:var(--bad);background:rgba(251,113,133,.12)}
+.vazio{padding:28px;text-align:center;color:var(--mute)}
+
+/* barras, gráficos */
+.bar{height:10px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden}
+.bar i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--a),var(--b));transition:width 1.1s cubic-bezier(.2,.9,.3,1)}
+.bar i.warn{background:linear-gradient(90deg,var(--warn),#fb923c)}
+.bar i.bad{background:linear-gradient(90deg,var(--bad),var(--c))}
+.orcs{display:grid;gap:14px}
+.orcs .row{display:flex;justify-content:space-between;gap:10px;margin-bottom:6px}
+.bar-grow{transform-box:fill-box;transform-origin:50% 100%;animation:grow .9s cubic-bezier(.2,.9,.3,1) both;animation-delay:calc(var(--d,0)*70ms)}
+@keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+svg text{fill:var(--mute);font-size:11px}
+.legenda{display:grid;gap:8px;margin-top:6px}
+.legenda div{display:flex;align-items:center;gap:8px}
+.legenda b{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}
+.donut{display:grid;grid-template-columns:150px 1fr;gap:14px;align-items:center}
+@media(max-width:420px){.donut{grid-template-columns:1fr}}
+.ring circle{transition:stroke-dasharray 1.2s cubic-bezier(.2,.9,.3,1)}
+
+/* consultor */
+.orbbox{display:grid;place-items:center;padding:10px 0 4px}
+.orb{width:150px;height:150px;border-radius:50%;position:relative;
+  background:radial-gradient(circle at 30% 28%,rgba(255,255,255,.75),transparent 38%),conic-gradient(from 0deg,var(--a),var(--b),var(--c),var(--a));
+  box-shadow:0 0 70px rgba(129,140,248,.55),inset 0 0 40px rgba(255,255,255,.18);animation:spin 10s linear infinite,breathe 4.5s ease-in-out infinite}
+.orb::after{content:"";position:absolute;inset:-18px;border-radius:50%;border:1px solid rgba(255,255,255,.14);animation:ping 3.2s ease-out infinite}
+.orb.thinking{animation-duration:1.6s,1.2s}
+@keyframes breathe{50%{transform:scale(1.07)}}
+@keyframes ping{from{transform:scale(.85);opacity:.9}to{transform:scale(1.5);opacity:0}}
+.dica{display:flex;gap:12px;padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.05);border-left:3px solid var(--mute);animation:rise .6s both;animation-delay:calc(var(--i,0)*90ms)}
+.dica.alerta{border-color:var(--bad);background:rgba(251,113,133,.08)}
+.dica.atencao{border-color:var(--warn);background:rgba(251,191,36,.07)}
+.dica.ok{border-color:var(--good);background:rgba(52,211,153,.07)}
+.dica.dica{border-color:var(--b)}
+.dica b{display:block;margin-bottom:2px}
+.dica .ico{font-size:18px;line-height:1.3}
+
+/* diversos */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips .chip button{border:0;background:none;cursor:pointer;color:var(--mute);padding:0 0 0 4px}
+.meta .ring{margin:0 auto 8px;display:block}
+.meta{text-align:center;padding:20px}
+.meta .acoes{display:flex;gap:8px;justify-content:center;margin-top:12px}
+.meta .acoes .btn{padding:7px 12px;font-size:13px}
+#toasts{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);z-index:99;display:grid;gap:8px;width:min(92vw,420px);pointer-events:none}
+.toast{padding:12px 16px;border-radius:14px;background:rgba(14,20,44,.94);border:1px solid var(--line);box-shadow:0 12px 40px rgba(0,0,0,.5);animation:rise .35s both}
+.toast.erro{border-color:var(--bad)}
+.toast.ok{border-color:var(--good)}
+.skel{height:96px;border-radius:var(--r);background:linear-gradient(100deg,rgba(255,255,255,.04) 30%,rgba(255,255,255,.12) 50%,rgba(255,255,255,.04) 70%);background-size:200% 100%;animation:sk 1.3s linear infinite}
+@keyframes sk{to{background-position:-200% 0}}
+.aviso{margin-top:22px;text-align:center;font-size:12px;color:var(--mute)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .tilt{transform:none!important}
+}
+</style>
+</head>
+<body>
+<canvas id="fx" aria-hidden="true"></canvas>
+
+<main id="app">
+  <section id="login" class="login" hidden>
+    <div class="box glass reveal">
+      <div class="brand"><span class="logo"></span><span>Rumo</span></div>
+      <h1>Seu dinheiro, com direção.</h1>
+      <p>Veja para onde vai cada real e receba orientação de um consultor que conhece os seus números.</p>
+      <div id="gbtn"></div>
+      <button class="btn ghost" id="demo" type="button">Ver em modo demonstração</button>
+      <p class="small" id="loginmsg" style="margin:16px 0 0"></p>
+    </div>
+  </section>
+
+  <section id="shell" hidden>
+    <header class="top glass reveal">
+      <div class="brand"><span class="logo"></span><span>Rumo</span></div>
+      <div class="mes">
+        <button class="icon" id="mprev" aria-label="Mês anterior">‹</button>
+        <b id="mlabel" aria-live="polite"></b>
+        <button class="icon" id="mnext" aria-label="Próximo mês">›</button>
+      </div>
+      <div class="user">
+        <button class="avatar" id="avatar" aria-haspopup="true" aria-expanded="false" aria-label="Conta"></button>
+        <div class="menu glass" id="menu" hidden>
+          <div class="who"><b id="mnome"></b><div class="small mute" id="memail"></div></div>
+          <button id="exportar">Exportar meus dados</button>
+          <button id="apagar">Apagar minha conta</button>
+          <button id="sair">Sair</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="navwrap">
+      <nav class="nav glass" id="nav" aria-label="Seções">
+        <span class="ind" id="ind"></span>
+        <button data-v="painel">Painel</button>
+        <button data-v="lanc">Lançamentos</button>
+        <button data-v="orc">Orçamentos</button>
+        <button data-v="metas">Metas</button>
+        <button data-v="contas">Contas</button>
+        <button data-v="cons">Consultor</button>
+      </nav>
+    </div>
+
+    <div id="view" class="view"></div>
+    <p class="aviso" id="aviso">Orientação educativa de planejamento financeiro. Não é recomendação de investimento.</p>
+  </section>
+</main>
+<div id="toasts" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   CONFIGURAÇÃO — troque os dois valores abaixo depois de publicar o
+   Apps Script (URL que termina em /exec) e criar o ID de cliente OAuth.
+   Enquanto estiverem com "COLE_AQUI", o site abre só em modo demonstração.
+   ===================================================================== */
+const CONFIG = {
+  API_URL:   'COLE_AQUI_A_URL_EXEC',
+  CLIENT_ID: 'COLE_AQUI_O_ID_DO_CLIENTE_OAUTH'
+};
+
+/*PURE_START*/
+const TZ = 'America/Sao_Paulo';
+const hojeISO = () => new Date().toLocaleDateString('sv-SE', { timeZone: TZ });
+const mesAtual = () => hojeISO().slice(0, 7);
+function somarMes(m, k) {
+  const p = m.split('-').map(Number), d = new Date(Date.UTC(p[0], p[1] - 1 + k, 1));
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+}
+function dataValida(y, m, d) {
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+// "1.234,56" · "12,5" · "-12.50" · "R$ 3.000" -> número (ou NaN)
+function parseValor(s) {
+  let t = String(s == null ? '' : s).replace(/R\$|\s/g, '');
+  if (!t) return NaN;
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+  const n = Number(t);
+  return isFinite(n) ? n : NaN;
+}
+// "2026-11-05" · "05/11/2026" · "5-11-26" -> "2026-11-05" (ou '')
+function parseData(s) {
+  const t = String(s || '').trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  let y, mo, d;
+  if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+  else {
+    m = t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
+    if (!m) return '';
+    d = +m[1]; mo = +m[2]; y = +m[3]; if (y < 100) y += 2000;
+  }
+  return dataValida(y, mo, d) ? y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0') : '';
+}
+function parseCSV(txt) {
+  txt = String(txt || '').replace(/^﻿/, '');
+  const primeira = txt.split(/\r?\n/).find(l => l.trim()) || '';
+  const cnt = ch => primeira.split(ch).length - 1;
+  const c = { ';': cnt(';'), ',': cnt(','), '\t': cnt('\t') };
+  let delim = Object.keys(c).sort((a, b) => c[b] - c[a])[0];
+  if (!c[delim]) delim = ',';
+  const rows = []; let row = [], cell = '', q = false;
+  const fim = () => { row.push(cell); cell = ''; if (row.some(x => x.trim() !== '')) rows.push(row); row = []; };
+  for (let i = 0; i < txt.length; i++) {
+    const ch = txt[i];
+    if (q) { if (ch === '"') { if (txt[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && txt[i + 1] === '\n') i++; fim(); }
+    else cell += ch;
+  }
+  if (cell !== '' || row.length) fim();
+  return rows;
+}
+const semAcento = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+// Converte linhas de CSV em lançamentos. Valor negativo = despesa; positivo = receita.
+function mapearLinhas(rows) {
+  if (!rows.length) return { linhas: [], erros: 0 };
+  let ci = { data: 0, desc: 1, valor: 2, tipo: -1 }, inicio = 0;
+  const cab = rows[0].map(semAcento);
+  const temCab = !cab.some(c => parseData(c)) && cab.some(c => /data|date|valor|amount|value|desc|hist/.test(c));
+  if (temCab) {
+    inicio = 1;
+    const acha = re => cab.findIndex(c => re.test(c));
+    ci = { data: acha(/data|date/), desc: acha(/desc|hist|memo|estab|lanc|detalh/), valor: acha(/valor|amount|value/), tipo: acha(/^tipo|type|d\/c/) };
+    if (ci.data < 0 || ci.valor < 0) return { linhas: [], erros: rows.length - 1, semColunas: true };
+  }
+  const linhas = []; let erros = 0;
+  for (let i = inicio; i < rows.length; i++) {
+    const r = rows[i];
+    const data = parseData(r[ci.data]), v = parseValor(r[ci.valor]);
+    if (!data || !isFinite(v) || v === 0) { erros++; continue; }
+    let tipo = v < 0 ? 'despesa' : 'receita';
+    if (ci.tipo >= 0) {
+      const t = semAcento(r[ci.tipo]);
+      if (/deb|desp|saida|^d$/.test(t)) tipo = 'despesa';
+      else if (/cred|rece|entrada|^c$/.test(t)) tipo = 'receita';
+    }
+    linhas.push({ data, tipo, valor: Math.abs(v), descricao: String(ci.desc >= 0 ? r[ci.desc] : '').trim().slice(0, 120) });
+  }
+  return { linhas, erros };
+}
+/*PURE_END*/
+
+/* ======================= utilidades de interface ======================= */
+const $ = (s, r = document) => r.querySelector(s);
+const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const brl = n => BRL.format(n || 0);
+const reduz = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const mesNome = (m, longo) => {
+  const p = m.split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, 1)).toLocaleDateString('pt-BR', { month: longo ? 'long' : 'short', year: longo ? 'numeric' : undefined, timeZone: 'UTC' }).replace('.', '');
+};
+const dataBR = d => d.slice(8, 10) + '/' + d.slice(5, 7);
+
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in (props || {})) {
+    const v = props[k];
+    if (v === false || v == null) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'style') e.style.cssText = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  kids.flat(2).forEach(c => { if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c))); });
+  return e;
+}
+const NS = 'http://www.w3.org/2000/svg';
+function sv(tag, props, ...kids) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in (props || {})) { if (props[k] != null && props[k] !== false) e.setAttribute(k, props[k]); }
+  kids.flat(2).forEach(c => { if (c != null) e.append(c.nodeType ? c : document.createTextNode(String(c))); });
+  return e;
+}
+const campo = (txt, inp, cls) => el('label', { class: 'campo ' + (cls || '') }, el('span', null, txt), inp);
+const selecao = (ops, val) => { const s = el('select'); ops.forEach(o => s.append(el('option', { value: o.v, selected: o.v === val }, o.t))); return s; };
+
+function toast(msg, tipo) {
+  const t = el('div', { class: 'toast ' + (tipo || '') }, msg);
+  $('#toasts').append(t);
+  setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 450); }, 3400);
+}
+
+function contar(no, ate, fmt) {
+  if (reduz) { no.textContent = fmt(ate); return; }
+  const ini = performance.now(), dur = 1000;
+  (function passo(t) {
+    const p = Math.min(1, (t - ini) / dur), e = 1 - Math.pow(1 - p, 4);
+    no.textContent = fmt(ate * e);
+    if (p < 1) requestAnimationFrame(passo);
+  })(ini);
+}
+function animar(raiz) {
+  raiz.querySelectorAll('.reveal').forEach((n, i) => n.style.setProperty('--i', i));
+  raiz.querySelectorAll('[data-count]').forEach(n => contar(n, Number(n.dataset.count), brl));
+  const barras = raiz.querySelectorAll('.bar i[data-w]');
+  requestAnimationFrame(() => requestAnimationFrame(() => barras.forEach(b => { b.style.width = b.dataset.w + '%'; })));
+  raiz.querySelectorAll('.ring circle[data-d]').forEach(c => requestAnimationFrame(() => requestAnimationFrame(() => { c.style.strokeDasharray = c.dataset.d; })));
+}
+const esqueleto = () => el('div', { class: 'stack' }, el('div', { class: 'skel' }), el('div', { class: 'skel' }), el('div', { class: 'skel' }));
+
+/* ======================= fundo animado ======================= */
+(function fundo() {
+  const c = $('#fx'), g = c.getContext('2d');
+  let W, H, dpr, t = 0, parts = [], rodando = true;
+  const mouse = { x: -999, y: -999 };
+  const blobs = [
+    { c: '94,234,212', x: .18, y: .22, r: .5, v: .00021, f: 0 },
+    { c: '129,140,248', x: .82, y: .3, r: .55, v: .00017, f: 2 },
+    { c: '244,114,182', x: .5, y: .88, r: .5, v: .00024, f: 4 }
+  ];
+  function tamanho() {
+    dpr = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight;
+    c.width = W * dpr; c.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const n = Math.round(Math.min(80, W * H / 18000));
+    parts = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .3, vy: (Math.random() - .5) * .3, r: Math.random() * 1.6 + .6 }));
+  }
+  function quadro() {
+    g.fillStyle = '#060a18'; g.fillRect(0, 0, W, H);
+    blobs.forEach(b => {
+      const x = (b.x + .14 * Math.sin(t * b.v + b.f)) * W, y = (b.y + .12 * Math.cos(t * b.v * 1.3 + b.f)) * H, r = b.r * Math.max(W, H) * .6;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, 'rgba(' + b.c + ',.20)'); gr.addColorStop(1, 'rgba(' + b.c + ',0)');
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    });
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      if (!reduz) {
+        const dx = mouse.x - p.x, dy = mouse.y - p.y, d = Math.hypot(dx, dy);
+        if (d < 170 && d > 1) { p.vx += dx / d * .012; p.vy += dy / d * .012; }
+        p.vx *= .995; p.vy *= .995; p.x += p.vx; p.y += p.vy;
+        if (p.x < -10) p.x = W + 10; else if (p.x > W + 10) p.x = -10;
+        if (p.y < -10) p.y = H + 10; else if (p.y > H + 10) p.y = -10;
+      }
+      g.fillStyle = 'rgba(200,220,255,.55)'; g.beginPath(); g.arc(p.x, p.y, p.r, 0, 6.2832); g.fill();
+      for (let j = i + 1; j < parts.length; j++) {
+        const q = parts[j], d = Math.hypot(p.x - q.x, p.y - q.y);
+        if (d < 110) { g.strokeStyle = 'rgba(160,190,255,' + (.16 * (1 - d / 110)) + ')'; g.lineWidth = 1; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(q.x, q.y); g.stroke(); }
+      }
+      const dm = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+      if (dm < 170) { g.strokeStyle = 'rgba(94,234,212,' + (.5 * (1 - dm / 170)) + ')'; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(mouse.x, mouse.y); g.stroke(); }
+    }
+  }
+  function laco(ts) { t = ts; if (rodando) quadro(); requestAnimationFrame(laco); }
+  addEventListener('resize', () => { tamanho(); quadro(); });
+  addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.clientY; }, { passive: true });
+  addEventListener('pointerleave', () => { mouse.x = mouse.y = -999; });
+  document.addEventListener('visibilitychange', () => { rodando = !document.hidden; });
+  tamanho(); quadro();
+  if (!reduz) requestAnimationFrame(laco);
+})();
+
+// inclinação suave dos cartões
+if (!reduz) {
+  document.addEventListener('pointermove', e => {
+    const n = e.target.closest && e.target.closest('.tilt');
+    if (!n || e.pointerType === 'touch') return;
+    const r = n.getBoundingClientRect();
+    n.style.setProperty('--ry', ((e.clientX - r.left) / r.width - .5) * 6 + 'deg');
+    n.style.setProperty('--rx', (.5 - (e.clientY - r.top) / r.height) * 6 + 'deg');
+  });
+  document.addEventListener('pointerout', e => {
+    const n = e.target.closest && e.target.closest('.tilt');
+    if (n) { n.style.setProperty('--rx', '0deg'); n.style.setProperty('--ry', '0deg'); }
+  });
+}
+
+/* ======================= estado e API ======================= */
+const S = { token: '', demo: false, user: null, mes: mesAtual(), view: 'painel', contas: [], cats: [], seq: 0, cseq: 0 };
+const configurado = () => !/COLE_AQUI/.test(CONFIG.API_URL) && !/COLE_AQUI/.test(CONFIG.CLIENT_ID);
+
+async function api(acao, dados) {
+  if (S.demo) return demo(acao, dados || {});
+  let j;
+  try {
+    const r = await fetch(CONFIG.API_URL, { method: 'POST', body: JSON.stringify({ acao, token: S.token, dados: dados || {} }) });
+    j = await r.json();
+  } catch (e) { throw new Error('Sem conexão com o servidor. Tente de novo.'); }
+  if (!j.ok) {
+    const e = new Error(j.mensagem || j.erro || 'Erro');
+    e.codigo = j.erro;
+    if (j.erro === 'token_invalido' || j.erro === 'nao_autenticado') { sair(); toast('Sua sessão expirou. Entre de novo.', 'erro'); }
+    throw e;
+  }
+  return j.dados;
+}
+
+/* ======================= modo demonstração (dados fictícios em memória) ======================= */
+const demoDB = (() => {
+  const id = () => (crypto.randomUUID ? crypto.randomUUID() : 'i' + Math.random().toString(36).slice(2));
+  const cats = [['Alimentação', 'despesa', '#f97316'], ['Moradia', 'despesa', '#6366f1'], ['Transporte', 'despesa', '#0ea5e9'], ['Saúde', 'despesa', '#ef4444'], ['Lazer', 'despesa', '#a855f7'], ['Educação', 'despesa', '#14b8a6'], ['Assinaturas', 'despesa', '#eab308'], ['Outros', 'despesa', '#94a3b8'], ['Salário', 'receita', '#22c55e'], ['Extras', 'receita', '#84cc16']].map(c => ({ id: id(), nome: c[0], tipo: c[1], cor: c[2] }));
+  const cat = n => cats.find(c => c.nome === n).id;
+  const contas = [{ id: id(), nome: 'Banco principal', tipo: 'corrente', saldoInicial: 1200 }, { id: id(), nome: 'Reserva', tipo: 'reserva', saldoInicial: 3000 }, { id: id(), nome: 'Carteira', tipo: 'dinheiro', saldoInicial: 80 }];
+  const lanc = [], hoje = Number(hojeISO().slice(8));
+  [0, 1, 2, 3, 4].forEach(k => {
+    const m = somarMes(mesAtual(), -k);
+    const add = (dia, tipo, valor, c, desc, conta) => { if (k === 0 && dia > hoje) return; lanc.push({ id: id(), data: m + '-' + String(dia).padStart(2, '0'), tipo, valor, contaId: contas[conta || 0].id, categoriaId: cat(c), descricao: desc }); };
+    add(5, 'receita', 5200, 'Salário', 'Salário');
+    add(6, 'despesa', 1500, 'Moradia', 'Aluguel');
+    add(8, 'despesa', 210 + k * 17, 'Alimentação', 'Mercado');
+    add(14, 'despesa', 185 + k * 9, 'Alimentação', 'Feira e padaria');
+    add(20, 'despesa', 260 - k * 11, 'Alimentação', 'Mercado');
+    add(9, 'despesa', 190, 'Transporte', 'Combustível');
+    add(10, 'despesa', 39.9, 'Assinaturas', 'Streaming de filmes');
+    add(11, 'despesa', 21.9, 'Assinaturas', 'Streaming de música');
+    add(16, 'despesa', 140 + k * 25, 'Lazer', 'Cinema e jantar');
+    add(18, 'despesa', 90, 'Saúde', 'Farmácia');
+  });
+  const orcs = [{ id: id(), categoriaId: cat('Alimentação'), mes: mesAtual(), limite: 620 }, { id: id(), categoriaId: cat('Lazer'), mes: mesAtual(), limite: 300 }];
+  const metas = [{ id: id(), nome: 'Viagem de férias', valorAlvo: 6000, valorAtual: 2200, prazo: somarMes(mesAtual(), 8) + '-15' }, { id: id(), nome: 'Reserva de emergência', valorAlvo: 15000, valorAtual: 3000, prazo: '' }];
+  return { id, cats, contas, lanc, orcs, metas };
+})();
+
+function demo(acao, d) {
+  const D = demoDB, ok = v => Promise.resolve(JSON.parse(JSON.stringify(v === undefined ? {} : v)));
+  const movs = () => D.lanc;
+  const doMes = m => movs().filter(l => l.data.slice(0, 7) === m);
+  const tot = (a, t) => Math.round(a.filter(l => l.tipo === t).reduce((s, l) => s + l.valor, 0) * 100) / 100;
+  const saldos = () => D.contas.map(c => ({ ...c, saldo: Math.round(movs().filter(l => l.contaId === c.id).reduce((s, l) => s + (l.tipo === 'receita' ? l.valor : -l.valor), c.saldoInicial) * 100) / 100 }));
+  const resumo = m => {
+    const a = doMes(m), gasto = {};
+    a.filter(l => l.tipo === 'despesa').forEach(l => { gasto[l.categoriaId] = (gasto[l.categoriaId] || 0) + l.valor; });
+    const nome = i => (D.cats.find(c => c.id === i) || { nome: 'Sem categoria' }).nome;
+    return {
+      mes: m, receitas: tot(a, 'receita'), despesas: tot(a, 'despesa'), saldoMes: tot(a, 'receita') - tot(a, 'despesa'),
+      saldoContas: saldos().reduce((s, c) => s + c.saldo, 0),
+      porCategoria: Object.keys(gasto).map(i => ({ categoriaId: i, nome: nome(i), valor: gasto[i] })).sort((x, y) => y.valor - x.valor),
+      orcamentos: D.orcs.filter(o => o.mes === m).map(o => ({ ...o, nome: nome(o.categoriaId), gasto: gasto[o.categoriaId] || 0, pct: Math.round((gasto[o.categoriaId] || 0) / o.limite * 100) })),
+      serie: [5, 4, 3, 2, 1, 0].map(k => { const mm = somarMes(m, -k), x = doMes(mm); return { mes: mm, receitas: tot(x, 'receita'), despesas: tot(x, 'despesa') }; })
+    };
+  };
+  switch (acao) {
+    case 'iniciar': return ok({ email: 'demo@rumo.app', nome: 'Visitante', novo: false });
+    case 'listar_contas': return ok(saldos());
+    case 'listar_categorias': return ok(D.cats);
+    case 'listar_lancamentos': return ok(doMes(d.mes).sort((a, b) => (a.data < b.data ? 1 : -1)));
+    case 'salvar_lancamento': { const v = parseValor(d.valor); if (!(v > 0)) return Promise.reject(new Error('Valor inválido.')); D.lanc.push({ id: D.id(), data: d.data, tipo: d.tipo, valor: v, contaId: d.contaId, categoriaId: d.categoriaId || '', descricao: d.descricao || '' }); return ok({}); }
+    case 'excluir_lancamento': D.lanc.splice(D.lanc.findIndex(l => l.id === d.id), 1); return ok({});
+    case 'importar_lancamentos': d.linhas.forEach(l => D.lanc.push({ id: D.id(), data: l.data, tipo: l.tipo, valor: l.valor, contaId: d.contaId, categoriaId: '', descricao: l.descricao })); return ok({ importadas: d.linhas.length, ignoradas: 0, invalidas: [] });
+    case 'listar_orcamentos': return ok(D.orcs.filter(o => o.mes === d.mes));
+    case 'salvar_orcamento': { const o = D.orcs.find(x => x.categoriaId === d.categoriaId && x.mes === d.mes); if (o) o.limite = parseValor(d.limite); else D.orcs.push({ id: D.id(), categoriaId: d.categoriaId, mes: d.mes, limite: parseValor(d.limite) }); return ok({}); }
+    case 'excluir_orcamento': D.orcs.splice(D.orcs.findIndex(o => o.id === d.id), 1); return ok({});
+    case 'listar_metas': return ok(D.metas);
+    case 'salvar_meta': { const m = D.metas.find(x => x.id === d.id); const novo = { nome: d.nome, valorAlvo: parseValor(d.valorAlvo), valorAtual: d.valorAtual === undefined ? 0 : parseValor(d.valorAtual), prazo: d.prazo || '' }; if (m) Object.assign(m, novo); else D.metas.push({ id: D.id(), ...novo }); return ok({}); }
+    case 'excluir_meta': D.metas.splice(D.metas.findIndex(m => m.id === d.id), 1); return ok({});
+    case 'salvar_conta': D.contas.push({ id: D.id(), nome: d.nome, tipo: d.tipo, saldoInicial: parseValor(d.saldoInicial) || 0 }); return ok({});
+    case 'excluir_conta': if (movs().some(l => l.contaId === d.id)) return Promise.reject(new Error('A conta tem lançamentos. Apague-os antes.')); D.contas.splice(D.contas.findIndex(c => c.id === d.id), 1); return ok({});
+    case 'salvar_categoria': D.cats.push({ id: D.id(), nome: d.nome, tipo: d.tipo, cor: d.cor }); return ok({});
+    case 'excluir_categoria': if (movs().some(l => l.categoriaId === d.id)) return Promise.reject(new Error('A categoria está em uso.')); D.cats.splice(D.cats.findIndex(c => c.id === d.id), 1); return ok({});
+    case 'resumo': return ok(resumo(d.mes));
+    case 'exportar_dados': return ok({ Contas: D.contas, Categorias: D.cats, Lancamentos: D.lanc, Orcamentos: D.orcs, Metas: D.metas });
+    case 'apagar_conta_usuario': return ok({ apagado: true });
+    case 'consultor': {
+      const r = resumo(d.mes), dicas = [];
+      if (r.receitas > 0) { const t = r.saldoMes / r.receitas; dicas.push(t < 0 ? { nivel: 'alerta', titulo: 'Gastos acima da renda', texto: 'Você gastou ' + brl(r.despesas) + ' e recebeu ' + brl(r.receitas) + '.' } : t < .1 ? { nivel: 'atencao', titulo: 'Pouca sobra no mês', texto: 'Você guardou ' + Math.round(t * 100) + '% da renda. Um ponto de partida comum é poupar entre 10% e 20%.' } : { nivel: 'ok', titulo: 'Boa sobra no mês', texto: 'Você guardou ' + Math.round(t * 100) + '% da renda (' + brl(r.saldoMes) + ').' }); }
+      r.orcamentos.forEach(o => { if (o.pct >= 100) dicas.push({ nivel: 'alerta', titulo: 'Orçamento estourado: ' + o.nome, texto: 'Você gastou ' + brl(o.gasto) + ' de um limite de ' + brl(o.limite) + '.' }); else if (o.pct >= 80) dicas.push({ nivel: 'atencao', titulo: 'Orçamento quase no limite: ' + o.nome, texto: 'Você já usou ' + o.pct + '% do limite de ' + brl(o.limite) + '.' }); });
+      dicas.push({ nivel: 'dica', titulo: 'Possível assinatura: Streaming de filmes', texto: 'Aparece todo mês por ' + brl(39.9) + '. Vale conferir se você ainda usa.' });
+      D.metas.forEach(m => { const f = m.valorAlvo - m.valorAtual; if (f > 0 && m.prazo) dicas.push({ nivel: 'dica', titulo: 'Meta: ' + m.nome, texto: 'Faltam ' + brl(f) + '. Guardando cerca de ' + brl(f / 8) + ' por mês você chega no prazo.' }); });
+      const ordem = { alerta: 0, atencao: 1, dica: 2, ok: 3 };
+      return ok({ mes: d.mes, receitas: r.receitas, despesas: r.despesas, saldoMes: r.saldoMes, dicas: dicas.sort((a, b) => ordem[a.nivel] - ordem[b.nivel]), aviso: 'Orientação educativa de planejamento financeiro. Não é recomendação de investimento.' });
+    }
+  }
+  return Promise.reject(new Error('Ação indisponível no modo demonstração.'));
+}
+
+/* ======================= gráficos (SVG) ======================= */
+function graficoBarras(serie) {
+  const W = 560, H = 230, pb = 30, pt = 12, n = serie.length, gw = W / n, bw = Math.min(26, gw / 3);
+  const max = Math.max(1, ...serie.flatMap(s => [s.receitas, s.despesas]));
+  const alt = v => (H - pb - pt) * (v / max);
+  const svg = sv('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'Receitas e despesas dos últimos 6 meses' });
+  [0, .5, 1].forEach(f => svg.append(sv('line', { x1: 0, x2: W, y1: H - pb - (H - pb - pt) * f, y2: H - pb - (H - pb - pt) * f, stroke: 'rgba(255,255,255,.07)' })));
+  serie.forEach((s, i) => {
+    const x0 = i * gw + gw / 2 - bw - 2;
+    [[s.receitas, '#5eead4', 'Receitas'], [s.despesas, '#f472b6', 'Despesas']].forEach((b, j) => {
+      const h = Math.max(b[0] > 0 ? 3 : 0, alt(b[0]));
+      svg.append(sv('rect', { class: 'bar-grow', style: '--d:' + (i * 2 + j), x: x0 + j * (bw + 4), y: H - pb - h, width: bw, height: h, rx: 6, fill: b[1], 'fill-opacity': j ? .85 : .95 }, sv('title', null, mesNome(s.mes, true) + ' · ' + b[2] + ': ' + brl(b[0]))));
+    });
+    svg.append(sv('text', { x: i * gw + gw / 2, y: H - 9, 'text-anchor': 'middle' }, mesNome(s.mes)));
+  });
+  return svg;
+}
+const PALETA = ['#5eead4', '#818cf8', '#f472b6', '#fbbf24', '#38bdf8', '#a3e635', '#fb923c', '#c084fc'];
+const corDe = (id, i) => ((S.cats.find(c => c.id === id) || {}).cor) || PALETA[i % PALETA.length];
+function rosca(itens, total, rotulo) {
+  const R = 54, C = 2 * Math.PI * R, svg = sv('svg', { class: 'ring', viewBox: '0 0 140 140', width: '100%', role: 'img', 'aria-label': 'Despesas por categoria' });
+  svg.append(sv('circle', { cx: 70, cy: 70, r: R, fill: 'none', stroke: 'rgba(255,255,255,.07)', 'stroke-width': 16 }));
+  let acc = 0;
+  itens.forEach((it, i) => {
+    const len = total > 0 ? it.valor / total * C : 0;
+    svg.append(sv('circle', { cx: 70, cy: 70, r: R, fill: 'none', stroke: corDe(it.categoriaId, i), 'stroke-width': 16, transform: 'rotate(' + (-90 + acc / C * 360) + ' 70 70)', 'stroke-dasharray': '0 ' + C, 'data-d': Math.max(0, len - 1.5) + ' ' + C }, sv('title', null, it.nome + ': ' + brl(it.valor))));
+    acc += len;
+  });
+  svg.append(sv('text', { x: 70, y: 66, 'text-anchor': 'middle', style: 'font-size:10px' }, rotulo), sv('text', { x: 70, y: 84, 'text-anchor': 'middle', style: 'font-size:14px;font-weight:700;fill:#eaf0ff' }, brl(total)));
+  return svg;
+}
+function anel(pct, cor) {
+  const R = 34, C = 2 * Math.PI * R, p = Math.max(0, Math.min(1, pct));
+  const svg = sv('svg', { class: 'ring', viewBox: '0 0 90 90', width: 96, height: 96, role: 'img', 'aria-label': Math.round(p * 100) + '% da meta' });
+  svg.append(sv('circle', { cx: 45, cy: 45, r: R, fill: 'none', stroke: 'rgba(255,255,255,.08)', 'stroke-width': 9 }),
+    sv('circle', { cx: 45, cy: 45, r: R, fill: 'none', stroke: cor, 'stroke-width': 9, 'stroke-linecap': 'round', transform: 'rotate(-90 45 45)', 'stroke-dasharray': '0 ' + C, 'data-d': (p * C) + ' ' + C }),
+    sv('text', { x: 45, y: 50, 'text-anchor': 'middle', style: 'font-size:15px;font-weight:700;fill:#eaf0ff' }, Math.round(p * 100) + '%'));
+  return svg;
+}
+const nivelCor = p => (p >= 100 ? 'bad' : p >= 80 ? 'warn' : '');
+const barra = (pct, cls) => el('div', { class: 'bar', role: 'progressbar', 'aria-valuenow': Math.min(100, pct), 'aria-valuemin': 0, 'aria-valuemax': 100 }, el('i', { class: cls || '', 'data-w': Math.min(100, pct) }));
+const ICONE = { alerta: '⚠️', atencao: '👀', dica: '💡', ok: '✅' };
+const cardDica = (d, i) => el('div', { class: 'dica ' + d.nivel, style: '--i:' + i }, el('span', { class: 'ico', 'aria-hidden': 'true' }, ICONE[d.nivel] || '💡'), el('div', null, el('b', null, d.titulo), el('span', { class: 'mute' }, d.texto)));
+const tentar = fn => async ev => {
+  if (ev && ev.preventDefault) ev.preventDefault();
+  const b = ev && ev.submitter ? ev.submitter : null;
+  if (b) b.disabled = true;
+  try { await fn(ev); } catch (e) { toast(e.message || 'Algo deu errado.', 'erro'); } finally { if (b) b.disabled = false; }
+};
+
+/* ======================= telas ======================= */
+const TELAS = { painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cons: vCons };
+
+async function vPainel(raiz) {
+  const [res, con] = await Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes })]);
+  const stat = (rot, v, cls) => el('div', { class: 'card glass tilt reveal' }, el('h3', null, rot), el('div', { class: 'stat ' + (cls || ''), 'data-count': v }, brl(0)));
+  const hero = el('div', { class: 'card glass tilt reveal hero' }, el('h3', null, 'Saldo nas contas'),
+    el('div', { class: 'big', 'data-count': res.saldoContas }, brl(0)),
+    el('div', { class: 'mute', style: 'margin-top:8px' }, 'Em ', mesNome(S.mes, true), ' o saldo do mês é ', el('b', { class: res.saldoMes >= 0 ? 'pos' : 'neg' }, brl(res.saldoMes)), '.'));
+  const barrasCard = el('div', { class: 'card glass tilt reveal' }, el('h3', null, 'Receitas × despesas · 6 meses'), graficoBarras(res.serie),
+    el('div', { class: 'chips', style: 'margin-top:8px' }, el('span', { class: 'chip' }, el('i', { class: 'dot', style: 'color:#5eead4;background:#5eead4' }), 'Receitas'), el('span', { class: 'chip' }, el('i', { class: 'dot', style: 'color:#f472b6;background:#f472b6' }), 'Despesas')));
+  const top = res.porCategoria.slice(0, 6);
+  const roscaCard = el('div', { class: 'card glass tilt reveal' }, el('h3', null, 'Para onde foi o dinheiro'),
+    top.length ? el('div', { class: 'donut' }, rosca(top, res.despesas, 'despesas'),
+      el('div', { class: 'legenda' }, top.map((t, i) => el('div', null, el('i', { class: 'dot', style: 'color:' + corDe(t.categoriaId, i) + ';background:' + corDe(t.categoriaId, i) }), el('span', null, t.nome), el('b', null, brl(t.valor))))))
+      : el('div', { class: 'vazio' }, 'Sem despesas neste mês.'));
+  const orcCard = el('div', { class: 'card glass tilt reveal' }, el('h3', null, 'Orçamentos do mês'),
+    res.orcamentos.length ? el('div', { class: 'orcs' }, res.orcamentos.slice(0, 4).map(o => el('div', null, el('div', { class: 'row' }, el('span', null, o.nome), el('span', { class: 'mute' }, brl(o.gasto) + ' de ' + brl(o.limite))), barra(o.pct, nivelCor(o.pct)))))
+      : el('div', { class: 'vazio' }, 'Defina limites na aba Orçamentos.'));
+  const conCard = el('div', { class: 'card glass tilt reveal' }, el('h3', null, 'O que o consultor viu'),
+    con.dicas.length ? el('div', { class: 'lista', style: 'gap:10px' }, con.dicas.slice(0, 3).map(cardDica)) : el('div', { class: 'vazio' }, 'Registre lançamentos para receber orientações.'),
+    el('div', { style: 'margin-top:14px' }, el('button', { class: 'btn ghost', onclick: () => ir('cons') }, 'Abrir o consultor')));
+  raiz.replaceChildren(
+    el('div', { class: 'grid g-hero' }, hero, stat('Receitas', res.receitas, 'pos'), stat('Despesas', res.despesas, 'neg'), stat('Sobra do mês', res.saldoMes, res.saldoMes >= 0 ? 'pos' : 'neg')),
+    el('div', { class: 'grid g-2 stack' }, barrasCard, roscaCard),
+    el('div', { class: 'grid g-eq' }, orcCard, conCard));
+}
+
+async function vLanc(raiz) {
+  const lista = await api('listar_lancamentos', { mes: S.mes });
+  let tipo = 'despesa';
+  const dataPadrao = S.mes === mesAtual() ? hojeISO() : S.mes + '-01';
+  const valor = el('input', { inputmode: 'decimal', placeholder: '0,00', required: true, autocomplete: 'off', 'aria-label': 'Valor' });
+  const data = el('input', { type: 'date', value: dataPadrao, required: true });
+  const conta = selecao(S.contas.map(c => ({ v: c.id, t: c.nome })));
+  const cat = el('select'), desc = el('input', { maxlength: '120', placeholder: 'Ex.: Mercado', autocomplete: 'off' });
+  const atualizaCats = () => cat.replaceChildren(el('option', { value: '' }, 'Sem categoria'), ...S.cats.filter(c => c.tipo === tipo).map(c => el('option', { value: c.id }, c.nome)));
+  atualizaCats();
+  const bDesp = el('button', { type: 'button', class: 'on out' }, 'Despesa'), bRec = el('button', { type: 'button' }, 'Receita');
+  const troca = t => { tipo = t; bDesp.className = t === 'despesa' ? 'on out' : ''; bRec.className = t === 'receita' ? 'on' : ''; atualizaCats(); };
+  bDesp.onclick = () => troca('despesa'); bRec.onclick = () => troca('receita');
+  const form = el('form', { class: 'f', onsubmit: tentar(async () => {
+    const v = parseValor(valor.value);
+    if (!(v > 0)) throw new Error('Informe um valor maior que zero.');
+    await api('salvar_lancamento', { tipo, valor: v, data: data.value, contaId: conta.value, categoriaId: cat.value, descricao: desc.value });
+    toast('Lançamento salvo.', 'ok'); await ir('lanc');
+  }) }, el('div', { class: 'campo' }, el('span', null, 'Tipo'), el('div', { class: 'seg' }, bDesp, bRec)),
+    campo('Valor (R$)', valor), campo('Data', data), campo('Conta', conta), campo('Categoria', cat), campo('Descrição', desc),
+    el('button', { class: 'btn', type: 'submit' }, 'Salvar'));
+
+  const nomeCat = id => (S.cats.find(c => c.id === id) || {}).nome || 'Sem categoria';
+  const nomeConta = id => (S.contas.find(c => c.id === id) || {}).nome || '';
+  const itens = lista.length ? lista.map((l, i) => el('div', { class: 'item', style: '--i:' + Math.min(i, 20) },
+    el('i', { class: 'dot', style: 'color:' + corDe(l.categoriaId, 0) + ';background:' + corDe(l.categoriaId, 0) }),
+    el('div', { class: 't' }, el('b', null, l.descricao || nomeCat(l.categoriaId)), el('span', { class: 'small mute' }, dataBR(l.data) + ' · ' + nomeCat(l.categoriaId) + ' · ' + nomeConta(l.contaId))),
+    el('span', { class: 'v ' + (l.tipo === 'receita' ? 'pos' : 'neg') }, (l.tipo === 'receita' ? '+ ' : '− ') + brl(l.valor)),
+    el('button', { class: 'x', 'aria-label': 'Excluir lançamento', onclick: tentar(async () => { if (!confirm('Excluir este lançamento?')) return; await api('excluir_lancamento', { id: l.id }); toast('Lançamento excluído.'); await ir('lanc'); }) }, '×')))
+    : [el('div', { class: 'vazio' }, 'Nenhum lançamento em ', mesNome(S.mes, true), '.')];
+
+  // importação de extrato
+  const arq = el('input', { type: 'file', accept: '.csv,.txt,text/csv', 'aria-label': 'Arquivo CSV' });
+  const contaImp = selecao(S.contas.map(c => ({ v: c.id, t: c.nome })));
+  const previa = el('div', { class: 'small mute', style: 'margin-top:10px' });
+  let pronto = [];
+  const bImp = el('button', { class: 'btn', type: 'button', disabled: true }, 'Importar');
+  arq.onchange = async () => {
+    pronto = []; bImp.disabled = true; previa.textContent = '';
+    const f = arq.files[0]; if (!f) return;
+    if (f.size > 2e6) { previa.textContent = 'Arquivo grande demais (máximo 2 MB).'; return; }
+    const r = mapearLinhas(parseCSV(await f.text()));
+    if (r.semColunas) { previa.textContent = 'Não encontrei as colunas de data e valor no cabeçalho.'; return; }
+    pronto = r.linhas;
+    previa.textContent = pronto.length + ' linhas válidas' + (r.erros ? ', ' + r.erros + ' ignoradas por erro' : '') + '. Valores negativos viram despesas.';
+    bImp.disabled = !pronto.length;
+  };
+  bImp.onclick = tentar(async () => {
+    bImp.disabled = true; let imp = 0, ign = 0, inv = 0;
+    for (let i = 0; i < pronto.length; i += 500) {
+      const r = await api('importar_lancamentos', { contaId: contaImp.value, linhas: pronto.slice(i, i + 500) });
+      imp += r.importadas; ign += r.ignoradas; inv += r.invalidas.length;
+    }
+    toast(imp + ' importadas' + (ign ? ', ' + ign + ' já existiam' : '') + (inv ? ', ' + inv + ' inválidas' : '') + '.', 'ok');
+    await ir('lanc');
+  });
+  const imp = el('div', { class: 'card glass reveal' }, el('h3', null, 'Importar extrato (CSV)'),
+    el('div', { class: 'f' }, campo('Arquivo do banco', arq), campo('Entra na conta', contaImp), el('div', null, bImp)),
+    previa, el('p', { class: 'small mute', style: 'margin:10px 0 0' }, 'Colunas aceitas: data, descrição e valor. Reenviar o mesmo arquivo não duplica.'));
+
+  raiz.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, 'Novo lançamento'), form),
+    el('div', { class: 'stack' }, el('div', { class: 'card glass reveal' }, el('h3', null, 'Lançamentos de ', mesNome(S.mes, true)), el('div', { class: 'lista' }, itens)), imp));
+}
+
+async function vOrc(raiz) {
+  const res = await api('resumo', { mes: S.mes });
+  const cat = selecao(S.cats.filter(c => c.tipo === 'despesa').map(c => ({ v: c.id, t: c.nome })));
+  const lim = el('input', { inputmode: 'decimal', placeholder: '500,00', required: true, autocomplete: 'off' });
+  const form = el('form', { class: 'f', onsubmit: tentar(async () => {
+    const v = parseValor(lim.value); if (!(v > 0)) throw new Error('Informe um limite maior que zero.');
+    await api('salvar_orcamento', { categoriaId: cat.value, mes: S.mes, limite: v }); toast('Orçamento salvo.', 'ok'); await ir('orc');
+  }) }, campo('Categoria', cat), campo('Limite do mês (R$)', lim), el('button', { class: 'btn', type: 'submit' }, 'Definir limite'));
+  const copiar = el('button', { class: 'btn ghost', type: 'button', onclick: tentar(async () => {
+    const ant = await api('listar_orcamentos', { mes: somarMes(S.mes, -1) });
+    if (!ant.length) throw new Error('O mês anterior não tem orçamentos.');
+    for (const o of ant) await api('salvar_orcamento', { categoriaId: o.categoriaId, mes: S.mes, limite: o.limite });
+    toast('Orçamentos copiados do mês anterior.', 'ok'); await ir('orc');
+  }) }, 'Copiar do mês anterior');
+  const lista = res.orcamentos.length ? el('div', { class: 'orcs' }, res.orcamentos.map(o => el('div', { class: 'item', style: 'display:block' },
+    el('div', { class: 'row' }, el('b', null, o.nome), el('span', { class: o.pct >= 100 ? 'neg' : 'mute' }, o.pct + '% · ' + brl(o.gasto) + ' de ' + brl(o.limite),
+      el('button', { class: 'x', 'aria-label': 'Remover orçamento', onclick: tentar(async () => { await api('excluir_orcamento', { id: o.id }); await ir('orc'); }) }, '×')), ),
+    barra(o.pct, nivelCor(o.pct)))))
+    : el('div', { class: 'vazio' }, 'Nenhum orçamento em ', mesNome(S.mes, true), '. Defina um limite por categoria.');
+  raiz.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, 'Limite por categoria'), form, el('div', { style: 'margin-top:12px' }, copiar)),
+    el('div', { class: 'stack' }, el('div', { class: 'card glass reveal' }, el('h3', null, 'Acompanhamento'), lista)));
+}
+
+async function vMetas(raiz) {
+  const metas = await api('listar_metas');
+  const nome = el('input', { required: true, maxlength: '60', placeholder: 'Ex.: Viagem', autocomplete: 'off' });
+  const alvo = el('input', { inputmode: 'decimal', required: true, placeholder: '5.000,00', autocomplete: 'off' });
+  const atual = el('input', { inputmode: 'decimal', placeholder: '0,00', autocomplete: 'off' });
+  const prazo = el('input', { type: 'date' });
+  const form = el('form', { class: 'f', onsubmit: tentar(async () => {
+    const a = parseValor(alvo.value); if (!(a > 0)) throw new Error('Informe o valor da meta.');
+    const v = atual.value.trim() ? parseValor(atual.value) : 0; if (!(v >= 0)) throw new Error('Valor atual inválido.');
+    await api('salvar_meta', { nome: nome.value, valorAlvo: a, valorAtual: v, prazo: prazo.value }); toast('Meta criada.', 'ok'); await ir('metas');
+  }) }, campo('Nome', nome), campo('Valor da meta (R$)', alvo), campo('Já guardei (R$)', atual), campo('Prazo (opcional)', prazo), el('button', { class: 'btn', type: 'submit' }, 'Criar meta'));
+  const cards = metas.length ? el('div', { class: 'grid g-cards' }, metas.map((m, i) => {
+    const p = m.valorAlvo > 0 ? m.valorAtual / m.valorAlvo : 0;
+    return el('div', { class: 'card glass tilt reveal meta' }, anel(p, PALETA[i % PALETA.length]), el('b', null, m.nome),
+      el('div', { class: 'small mute' }, brl(m.valorAtual) + ' de ' + brl(m.valorAlvo)),
+      m.prazo ? el('div', { class: 'small mute' }, 'até ' + m.prazo.split('-').reverse().join('/')) : null,
+      el('div', { class: 'acoes' },
+        el('button', { class: 'btn', onclick: tentar(async () => {
+          const r = prompt('Quanto você guardou agora? (R$)'); if (r == null) return;
+          const v = parseValor(r); if (!(v > 0)) throw new Error('Valor inválido.');
+          await api('salvar_meta', { id: m.id, nome: m.nome, valorAlvo: m.valorAlvo, valorAtual: m.valorAtual + v, prazo: m.prazo }); toast('Aporte registrado.', 'ok'); await ir('metas');
+        }) }, '+ Aportar'),
+        el('button', { class: 'btn ghost', onclick: tentar(async () => { if (!confirm('Excluir a meta "' + m.nome + '"?')) return; await api('excluir_meta', { id: m.id }); await ir('metas'); }) }, 'Excluir')));
+  })) : el('div', { class: 'card glass vazio' }, 'Nenhuma meta ainda. Crie a primeira acima.');
+  raiz.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, 'Nova meta'), form), el('div', { class: 'stack' }, cards));
+}
+
+async function vContas(raiz) {
+  await carregarBase();
+  const nome = el('input', { required: true, maxlength: '60', placeholder: 'Ex.: Banco principal', autocomplete: 'off' });
+  const tipo = selecao([['corrente', 'Conta corrente'], ['poupanca', 'Poupança'], ['reserva', 'Reserva de emergência'], ['investimento', 'Investimentos'], ['dinheiro', 'Dinheiro'], ['cartao', 'Cartão']].map(x => ({ v: x[0], t: x[1] })));
+  const saldo = el('input', { inputmode: 'decimal', placeholder: '0,00', autocomplete: 'off' });
+  const formC = el('form', { class: 'f', onsubmit: tentar(async () => {
+    const s = saldo.value.trim() ? parseValor(saldo.value) : 0; if (!isFinite(s)) throw new Error('Saldo inicial inválido.');
+    await api('salvar_conta', { nome: nome.value, tipo: tipo.value, saldoInicial: s }); toast('Conta criada.', 'ok'); await ir('contas');
+  }) }, campo('Nome', nome), campo('Tipo', tipo), campo('Saldo inicial (R$)', saldo), el('button', { class: 'btn', type: 'submit' }, 'Adicionar conta'));
+  const lista = el('div', { class: 'lista' }, S.contas.map((c, i) => el('div', { class: 'item', style: '--i:' + i },
+    el('i', { class: 'dot', style: 'color:' + PALETA[i % 8] + ';background:' + PALETA[i % 8] }),
+    el('div', { class: 't' }, el('b', null, c.nome), el('span', { class: 'small mute' }, c.tipo)),
+    el('span', { class: 'v ' + (c.saldo >= 0 ? '' : 'neg') }, brl(c.saldo)),
+    el('button', { class: 'x', 'aria-label': 'Excluir conta', onclick: tentar(async () => { if (!confirm('Excluir a conta "' + c.nome + '"?')) return; await api('excluir_conta', { id: c.id }); await ir('contas'); }) }, '×'))));
+  const cn = el('input', { required: true, maxlength: '40', placeholder: 'Ex.: Pets', autocomplete: 'off' });
+  const ct = selecao([{ v: 'despesa', t: 'Despesa' }, { v: 'receita', t: 'Receita' }]);
+  const cc = el('input', { type: 'color', value: '#818cf8', 'aria-label': 'Cor' });
+  const formK = el('form', { class: 'f', onsubmit: tentar(async () => { await api('salvar_categoria', { nome: cn.value, tipo: ct.value, cor: cc.value }); toast('Categoria criada.', 'ok'); await ir('contas'); }) },
+    campo('Nova categoria', cn), campo('Tipo', ct), campo('Cor', cc), el('button', { class: 'btn', type: 'submit' }, 'Adicionar categoria'));
+  const chips = el('div', { class: 'chips', style: 'margin-top:14px' }, S.cats.map(c => el('span', { class: 'chip' }, el('i', { class: 'dot', style: 'color:' + c.cor + ';background:' + c.cor }), c.nome + (c.tipo === 'receita' ? ' (receita)' : ''),
+    el('button', { 'aria-label': 'Excluir categoria ' + c.nome, onclick: tentar(async () => { if (!confirm('Excluir a categoria "' + c.nome + '"?')) return; await api('excluir_categoria', { id: c.id }); await ir('contas'); }) }, '×'))));
+  raiz.replaceChildren(el('div', { class: 'grid g-eq' }, el('div', { class: 'card glass reveal' }, el('h3', null, 'Minhas contas'), lista, el('div', { style: 'margin-top:14px' }, formC)),
+    el('div', { class: 'card glass reveal' }, el('h3', null, 'Categorias'), formK, chips)));
+}
+
+async function vCons(raiz) {
+  const orb = el('div', { class: 'orb thinking', role: 'img', 'aria-label': 'Consultor analisando' });
+  const saida = el('div', { class: 'lista', style: 'gap:10px;margin-top:8px' });
+  const resumo = el('p', { class: 'mute', style: 'text-align:center;margin:8px 0 18px' }, 'Analisando seus números de ', mesNome(S.mes, true), '…');
+  const refaz = el('button', { class: 'btn ghost', type: 'button' }, 'Reanalisar');
+  raiz.replaceChildren(el('div', { class: 'card glass reveal' }, el('div', { class: 'orbbox' }, orb), resumo, saida, el('div', { style: 'text-align:center;margin-top:16px' }, refaz)));
+  const rodar = async () => {
+    orb.classList.add('thinking'); saida.replaceChildren();
+    const meu = ++S.cseq;
+    const [c] = await Promise.all([api('consultor', { mes: S.mes }), new Promise(r => setTimeout(r, reduz ? 0 : 1100))]);
+    if (meu !== S.cseq) return;
+    orb.classList.remove('thinking');
+    resumo.replaceChildren('Em ', mesNome(S.mes, true), ': receitas ', el('b', { class: 'pos' }, brl(c.receitas)), ', despesas ', el('b', { class: 'neg' }, brl(c.despesas)), '.');
+    saida.append(...(c.dicas.length ? c.dicas.map(cardDica) : [el('div', { class: 'vazio' }, 'Ainda não há dados suficientes. Registre receitas e despesas para eu poder ajudar.')]));
+  };
+  refaz.onclick = tentar(rodar);
+  rodar().catch(e => { orb.classList.remove('thinking'); resumo.textContent = e.message || 'Não foi possível analisar agora.'; });
+}
+
+/* ======================= navegação ======================= */
+async function carregarBase() { [S.contas, S.cats] = await Promise.all([api('listar_contas'), api('listar_categorias')]); }
+
+function marcaNav() {
+  const nav = $('#nav'), on = $('button.on', nav), ind = $('#ind');
+  if (!on) return;
+  ind.style.left = on.offsetLeft + 'px'; ind.style.width = on.offsetWidth + 'px';
+  on.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+async function ir(v) {
+  S.view = v || S.view;
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === S.view));
+  marcaNav();
+  const meu = ++S.seq, raiz = $('#view');
+  raiz.replaceChildren(esqueleto());
+  try {
+    if (!S.contas.length || !S.cats.length) await carregarBase();
+    const tmp = el('div');
+    await TELAS[S.view](tmp);
+    if (meu !== S.seq) return;
+    raiz.replaceChildren(...tmp.childNodes);
+    animar(raiz);
+  } catch (e) { if (meu === S.seq) { raiz.replaceChildren(el('div', { class: 'card glass vazio' }, e.message || 'Erro ao carregar.', el('div', { style: 'margin-top:12px' }, el('button', { class: 'btn ghost', onclick: () => ir() }, 'Tentar de novo')))); } }
+}
+function rotuloMes() {
+  $('#mlabel').textContent = mesNome(S.mes, true);
+  $('#mnext').disabled = S.mes >= mesAtual();
+}
+
+/* ======================= sessão e login ======================= */
+function decodificaJWT(t) {
+  try { const p = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(escape(atob(p + '==='.slice((p.length + 3) % 4))))); } catch (e) { return null; }
+}
+const guarda = (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } };
+const le = k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } };
+
+async function entrar(token, emDemo) {
+  S.demo = !!emDemo; S.token = token || '';
+  try {
+    const u = await api('iniciar');
+    const jwt = emDemo ? null : decodificaJWT(token);
+    S.user = { nome: u.nome || (jwt && jwt.name) || 'Você', email: u.email };
+    guarda('rumo_tk', emDemo ? null : token);
+    await carregarBase();
+    $('#login').hidden = true; $('#shell').hidden = false;
+    $('#avatar').textContent = (S.user.nome || '?').trim().charAt(0).toUpperCase();
+    $('#mnome').textContent = S.user.nome; $('#memail').textContent = S.user.email;
+    S.mes = mesAtual(); rotuloMes();
+    if (emDemo) toast('Modo demonstração: os dados são fictícios e somem ao recarregar.');
+    await ir('painel');
+  } catch (e) {
+    toast(e.message || 'Não foi possível entrar.', 'erro');
+    if (!emDemo) mostrarLogin();
+  }
+}
+function mostrarLogin() { $('#shell').hidden = true; $('#login').hidden = false; $('#login .box').style.animation = 'none'; void $('#login .box').offsetWidth; $('#login .box').style.animation = ''; }
+function sair() {
+  S.token = ''; S.user = null; S.contas = []; S.cats = []; S.demo = false; guarda('rumo_tk', null);
+  try { if (window.google && google.accounts) google.accounts.id.disableAutoSelect(); } catch (e) { /* ok */ }
+  $('#menu').hidden = true; mostrarLogin();
+}
+function iniciarGoogle() {
+  const msg = $('#loginmsg');
+  if (!configurado()) { msg.textContent = 'Para entrar com sua conta Google, preencha API_URL e CLIENT_ID no topo do index.html.'; return; }
+  let tent = 0;
+  (function espera() {
+    if (window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.initialize({ client_id: CONFIG.CLIENT_ID, callback: r => entrar(r.credential, false), auto_select: false });
+      google.accounts.id.renderButton($('#gbtn'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', locale: 'pt-BR', width: 280 });
+    } else if (tent++ < 60) setTimeout(espera, 100);
+    else msg.textContent = 'Não consegui carregar o login do Google. Verifique a conexão.';
+  })();
+}
+
+/* ======================= eventos da casca ======================= */
+$('#nav').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (b) ir(b.dataset.v); });
+$('#mprev').onclick = () => { S.mes = somarMes(S.mes, -1); rotuloMes(); ir(); };
+$('#mnext').onclick = () => { if (S.mes < mesAtual()) { S.mes = somarMes(S.mes, 1); rotuloMes(); ir(); } };
+$('#avatar').onclick = () => { const m = $('#menu'); m.hidden = !m.hidden; $('#avatar').setAttribute('aria-expanded', String(!m.hidden)); };
+document.addEventListener('click', e => { if (!e.target.closest('.user')) $('#menu').hidden = true; });
+$('#sair').onclick = sair;
+$('#demo').onclick = () => entrar('', true);
+$('#exportar').onclick = tentar(async () => {
+  const d = await api('exportar_dados');
+  const a = el('a', { href: URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' })), download: 'meus-dados-rumo.json' });
+  document.body.append(a); a.click(); a.remove(); $('#menu').hidden = true; toast('Dados exportados.', 'ok');
+});
+$('#apagar').onclick = tentar(async () => {
+  $('#menu').hidden = true;
+  if (prompt('Isso apaga TODOS os seus dados e não dá para desfazer.\nPara confirmar, digite APAGAR:') !== 'APAGAR') return;
+  await api('apagar_conta_usuario', { confirmar: 'APAGAR' }); toast('Seus dados foram apagados.'); sair();
+});
+addEventListener('resize', marcaNav);
+
+/* ======================= início ======================= */
+(function partida() {
+  iniciarGoogle();
+  const tk = le('rumo_tk'), jwt = tk && decodificaJWT(tk);
+  if (jwt && jwt.exp * 1000 > Date.now() + 60000 && configurado()) { entrar(tk, false); }
+  else { guarda('rumo_tk', null); $('#login').hidden = false; }
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { /* sem PWA offline */ });
+  if (new URLSearchParams(location.search).has('demo')) entrar('', true);
+})();
+</script>
+</body>
+</html>
