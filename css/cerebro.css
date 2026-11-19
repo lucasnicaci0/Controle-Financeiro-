@@ -1,0 +1,107 @@
+/* ===== Cérebro Financeiro — estilos da camada 3D, cartões, cursor e loading =====
+   As cores vêm de js/cerebro/theme.js (aplicadas como variáveis em :root). */
+
+#gl{position:fixed;inset:0;width:100%;height:100%;z-index:0;display:block;background:#05020A}
+html:not(.gl-on) #gl{display:none}
+
+/* loading */
+#loader{position:fixed;inset:0;z-index:200;display:grid;place-content:center;justify-items:center;gap:18px;background:radial-gradient(ellipse at 50% 40%,#140a2e,#05020A 70%);
+  transition:opacity .9s ease,visibility .9s}
+#loader.done{opacity:0;visibility:hidden}
+.ld-orb{width:84px;height:84px;border-radius:50%;background:conic-gradient(from 0deg,#8B5CF6,#FF4DA6,#22D3EE,#8B5CF6);filter:blur(.3px);
+  box-shadow:0 0 60px rgba(139,92,246,.7),0 0 120px rgba(255,77,166,.35);animation:spin 5s linear infinite,breathe 2.6s ease-in-out infinite;
+  -webkit-mask:radial-gradient(circle,transparent 34%,#000 36%);mask:radial-gradient(circle,transparent 34%,#000 36%)}
+.ld-title{font-weight:700;letter-spacing:.3em;text-transform:uppercase;font-size:14px;color:var(--ink)}
+.ld-bar{width:min(280px,70vw);height:4px;border-radius:9px;background:rgba(167,139,250,.18);overflow:hidden}
+.ld-bar i{display:block;height:100%;width:2%;border-radius:9px;background:linear-gradient(90deg,#8B5CF6,#FF4DA6,#22D3EE);box-shadow:0 0 14px #FF4DA6;transition:width .35s ease}
+.ld-txt{font-size:12.5px;color:var(--mute)}
+
+/* camada de cartões */
+#cerebro-ui{position:fixed;inset:0;z-index:2;pointer-events:none;overflow:hidden}
+.rlines{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.rline{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;opacity:0;filter:drop-shadow(0 0 5px currentColor) drop-shadow(0 0 12px rgba(255,77,166,.55))}
+.rdot{opacity:0;filter:drop-shadow(0 0 8px currentColor)}
+
+.rc{position:absolute;left:0;top:0;width:min(330px,34vw);padding:18px 20px 16px;pointer-events:auto;visibility:hidden;opacity:0;
+  background:rgba(12,5,28,.78);border:1px solid color-mix(in srgb,var(--rc) 50%,transparent);
+  box-shadow:0 0 0 1px rgba(255,255,255,.04) inset,0 18px 60px rgba(0,0,0,.45),0 0 34px color-mix(in srgb,var(--rc) 25%,transparent);
+  transition:box-shadow .3s,border-color .3s,background .3s;will-change:transform,opacity}
+.rc.hl{border-color:var(--rc);background:rgba(22,9,48,.88);box-shadow:0 0 0 1px rgba(255,255,255,.08) inset,0 22px 70px rgba(0,0,0,.5),0 0 60px color-mix(in srgb,var(--rc) 55%,transparent)}
+.rc h3{margin:0 0 2px;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:color-mix(in srgb,var(--rc) 55%,#fff)}
+.rc .rm{margin:0 0 10px;font-size:13px;color:#b9a8f5}
+.rc .rv{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.15;font-variant-numeric:tabular-nums;color:var(--ink)}
+.rc .rs{margin:6px 0 12px;font-size:12.5px;line-height:1.45;color:#b9a8f5}
+.rv.pos{color:#67e8f9}.rv.neg{color:#ff7ab8}
+.rc .open{border:1px solid color-mix(in srgb,var(--rc) 55%,transparent);background:color-mix(in srgb,var(--rc) 16%,transparent);color:var(--ink);
+  padding:8px 14px;border-radius:999px;cursor:pointer;font-size:13px;font-weight:600;transition:background .25s,box-shadow .25s}
+.rc .open:hover,.rc .open:focus-visible{background:color-mix(in srgb,var(--rc) 40%,transparent);box-shadow:0 0 24px color-mix(in srgb,var(--rc) 60%,transparent)}
+#cerebro-ui.over .rc{width:min(280px,24vw);padding:12px 16px 12px}
+#cerebro-ui.over .rc .rm{display:none}
+#cerebro-ui.over .rc .rv{font-size:20px}
+#cerebro-ui.over .rc .rs{display:none}
+#cerebro-ui.over .rc .open{margin-top:8px;padding:5px 12px}
+
+/* abertura */
+.jhero{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;padding:0 24px;pointer-events:none}
+.jhero .jt{margin:0 0 10px;font-size:clamp(34px,6.4vw,76px);line-height:1.04;letter-spacing:-.03em;
+  color:#F5F3FF;text-shadow:0 0 40px rgba(255,77,166,.5),0 0 90px rgba(139,92,246,.6)}
+.jhero .jp{margin:0 auto;max-width:520px;color:var(--ink);opacity:.86;font-size:clamp(14px,2.1vw,18px)}
+.jhint{margin-top:22px;font-size:22px;color:var(--mute);animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(8px)}}
+.rback{position:absolute;right:max(16px,3vw);bottom:max(22px,4vh);pointer-events:auto;opacity:0;visibility:hidden;transition:opacity .4s,visibility .4s}
+.rback.show{opacity:1;visibility:visible}
+.rstrip{position:absolute;left:0;right:0;bottom:86px;display:none;gap:8px;overflow-x:auto;padding:6px 14px;pointer-events:auto;scrollbar-width:none}
+.rstrip::-webkit-scrollbar{display:none}
+.rstrip.show{display:flex}
+.rchip{flex:none;border:1px solid color-mix(in srgb,var(--rc) 55%,transparent);background:rgba(22,10,46,.7);color:var(--ink);padding:8px 14px;border-radius:999px;cursor:pointer;font-size:13px;backdrop-filter:blur(10px)}
+
+/* jornada (rolagem) */
+.jornada{position:relative}
+.jspacer{height:1000vh}
+body.is-journey .view{animation:none}
+body.is-journey .top{position:sticky;top:8px}
+body.is-journey .aviso{position:relative;z-index:1}
+.rlist{list-style:none;margin:0;padding:0;display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
+.rl h3.rh{margin:0 0 4px;color:var(--rc);font-size:14px;letter-spacing:.1em;text-transform:uppercase}
+.sr-btn{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* revelação de texto: borrado → nítido */
+.rw{display:inline-block;opacity:0;filter:blur(14px);transform:translateY(.5em);animation:rwin .9s cubic-bezier(.2,.9,.3,1) forwards}
+@keyframes rwin{to{opacity:1;filter:blur(0);transform:none}}
+.reveal-block{animation:rwin 1s cubic-bezier(.2,.9,.3,1) both}
+
+/* transição entre telas: a nova tela chega "de dentro" */
+@keyframes warpin{from{opacity:0;transform:scale(.93);filter:blur(14px)}to{opacity:1;transform:none;filter:blur(0)}}
+.view.warp{animation:warpin .8s cubic-bezier(.2,.9,.3,1) both}
+
+/* cursor */
+html.cursor-on,html.cursor-on *{cursor:none!important}
+html.cursor-on input,html.cursor-on select,html.cursor-on textarea{cursor:text!important}
+#cursorfx{position:fixed;inset:0;width:100%;height:100%;z-index:150;pointer-events:none}
+.cur-dot,.cur-ring{position:fixed;left:0;top:0;z-index:151;pointer-events:none;opacity:0;transition:opacity .25s}
+html.cursor-seen .cur-dot,html.cursor-seen .cur-ring{opacity:1}
+.cur-dot{width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#fff;box-shadow:0 0 12px #FF4DA6,0 0 24px #8B5CF6}
+.cur-ring{width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;border:1.5px solid rgba(167,139,250,.75);
+  transition:width .25s,height .25s,margin .25s,border-color .25s,background .25s,opacity .25s}
+.cur-ring.hot{width:54px;height:54px;margin:-27px 0 0 -27px;border-color:#FF4DA6;background:rgba(255,77,166,.1)}
+.cur-ring.down{width:26px;height:26px;margin:-13px 0 0 -13px}
+.mag{transition:transform .18s ease-out!important}
+body.over-region #cerebro-ui{cursor:pointer}
+
+/* mobile */
+@media (max-width:719px){
+  .rc{width:calc(100vw - 24px)!important;padding:14px 16px}
+  .rc .rv{font-size:24px}
+  .rback{bottom:auto;top:88px;right:12px;padding:8px 14px}
+  #cerebro-ui.over .rc{display:none}
+  .jspacer{height:900vh}
+}
+@media (prefers-reduced-motion:reduce){
+  .rw{animation:none;opacity:1;filter:none;transform:none}
+  .jhint{animation:none}
+  .ld-orb{animation:none}
+}
+
+/* login: painel mais sólido para o texto vencer o brilho do cérebro */
+.login .box{background:rgba(12,5,28,.78)}
+.login p{color:#b9a8f5}
