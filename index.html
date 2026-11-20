@@ -125,6 +125,13 @@ dialog.crop{margin:auto;padding:20px;color:var(--ink);max-width:min(360px,94vw)}
 .faq details{border-bottom:1px solid var(--line);padding:10px 0}.faq summary{cursor:pointer;font-weight:600}.faq details p{margin:8px 0 0;color:var(--mute)}
 textarea{width:100%;padding:11px 13px;border-radius:var(--rb,13px);border:1px solid var(--line);background:rgba(11,6,24,.6);font:inherit;color:inherit;resize:vertical}
 html[data-tema=claro] body.in-app textarea{background:#fff;color:var(--ink)}
+.cb-wrap{position:relative}.cb-sug{list-style:none;margin:6px 0 0;padding:6px;position:absolute;left:0;right:0;z-index:30;background:var(--bg);border:1px solid var(--line);border-radius:var(--rb,13px);box-shadow:0 14px 40px rgba(0,0,0,.4);max-height:300px;overflow:auto}
+.cb-sug li{padding:10px 12px;border-radius:10px;cursor:pointer}.cb-sug li.on,.cb-sug li:hover{background:rgba(139,92,246,.28)}
+.cb-favs{margin:16px 0}.cb-fav{display:flex;flex-direction:column;gap:2px;text-align:left;cursor:pointer;color:inherit;font:inherit}.cb-fav.on{outline:2px solid var(--a)}.cb-fav b{font-size:1.1rem}.cb-v{font-size:1.25rem;font-weight:700}
+.cb-det .row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.cb-pares{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px}.cb-linha{margin:4px 0}
+.cb-graf{position:relative}.cb-graf svg .eixo{fill:var(--mute);font-size:11px}.cb-tip{position:absolute;top:0;transform:translateX(-50%);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:.8rem;pointer-events:none;white-space:nowrap}
+.cb-conv{display:grid;grid-template-columns:1fr 1fr auto 1fr;gap:12px;align-items:end}@media(max-width:640px){.cb-conv{grid-template-columns:1fr 1fr}.cb-conv>:first-child{grid-column:1/-1}.cb-conv .btn{justify-self:start}}
+.cb-res{font-size:1.8rem;font-weight:700;margin:14px 0 4px}.skel{background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.12),rgba(255,255,255,.05));background-size:200% 100%;animation:sk 1.2s infinite;border-radius:12px}@keyframes sk{to{background-position:-200% 0}}
 .cat-ico{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:12px;border:1px solid;font-size:1.2rem;flex:none}
 .cat-ico.grande{width:52px;height:52px;font-size:1.6rem}
 .item.arq{opacity:.6}
@@ -290,6 +297,7 @@ body.in-app #scrim{opacity:1}
         <button data-v="metas">Metas</button>
         <button data-v="contas">Contas</button>
         <button data-v="cats">Categorias</button>
+        <button data-v="cambio">Câmbio</button>
         <button data-v="cartoes">Cartões</button>
         <button data-v="invest">Investimentos</button>
         <button data-v="agenda">Agenda</button>
@@ -570,7 +578,7 @@ const demoDB = (() => {
   });
   const orcs = [{ id: id(), categoriaId: cat('Alimentação'), mes: mesAtual(), limite: 620 }, { id: id(), categoriaId: cat('Lazer'), mes: mesAtual(), limite: 300 }];
   const metas = [{ id: id(), nome: 'Viagem de férias', valorAlvo: 6000, valorAtual: 2200, prazo: somarMes(mesAtual(), 8) + '-15' }, { id: id(), nome: 'Reserva de emergência', valorAlvo: 15000, valorAtual: 3000, prazo: '' }];
-  return { id, cats, contas, lanc, orcs, metas, agenda: [], limites: [], alertas: [], ativos: [], msgs: [], perfil: { nome: 'Visitante', apelido: '', nascimento: '', foto: '' } };
+  return { id, cats, contas, lanc, orcs, metas, agenda: [], limites: [], alertas: [], ativos: [], cambioFav: ['USD', 'EUR', 'GBP', 'ARS', 'BTC'], cambioAlertas: [], msgs: [], perfil: { nome: 'Visitante', apelido: '', nascimento: '', foto: '' } };
 })();
 
 
@@ -617,7 +625,7 @@ function demo(acao, d) {
     case 'listar_contas': return ok(saldos());
     case 'listar_categorias': return ok(D.cats);
     case 'listar_lancamentos': return ok(doMes(d.mes).sort((a, b) => (a.data < b.data ? 1 : -1)));
-    case 'salvar_lancamento': { const v = parseValor(d.valor); if (!(v > 0)) return Promise.reject(new Error('Valor inválido.')); D.lanc.push({ id: D.id(), data: d.data, tipo: d.tipo, valor: v, contaId: d.contaId, categoriaId: d.categoriaId || '', descricao: d.descricao || '', tags: String(d.tags || '').split(',').map(t => t.trim().replace(/^#+/, '')).filter(Boolean).slice(0, 8) }); return ok({ alertas: d.tipo === 'despesa' ? demoAlertas(demoDB, d.data.slice(0, 7)) : [] }); }
+    case 'salvar_lancamento': { const v = parseValor(d.valor); if (!(v > 0)) return Promise.reject(new Error('Valor inválido.')); D.lanc.push({ id: D.id(), data: d.data, tipo: d.tipo, valor: v, contaId: d.contaId, categoriaId: d.categoriaId || '', descricao: d.descricao || '', moeda: d.moeda || '', valorOrig: d.valorOrig || 0, cotacao: d.cotacao || 0, tags: String(d.tags || '').split(',').map(t => t.trim().replace(/^#+/, '')).filter(Boolean).slice(0, 8) }); return ok({ alertas: d.tipo === 'despesa' ? demoAlertas(demoDB, d.data.slice(0, 7)) : [] }); }
     case 'excluir_lancamento': D.lanc.splice(D.lanc.findIndex(l => l.id === d.id), 1); return ok({});
     case 'importar_lancamentos': d.linhas.forEach(l => D.lanc.push({ id: D.id(), data: l.data, tipo: l.tipo, valor: l.valor, contaId: d.contaId, categoriaId: '', descricao: l.descricao })); return ok({ importadas: d.linhas.length, ignoradas: 0, invalidas: [] });
     case 'listar_orcamentos': return ok(D.orcs.filter(o => o.mes === d.mes));
@@ -728,6 +736,28 @@ function demo(acao, d) {
     case 'salvar_perfil': ['nome', 'apelido', 'nascimento', 'foto'].forEach(k => { if (d[k] !== undefined) D.perfil[k] = d[k]; }); return ok({ salvo: true });
     case 'enviar_mensagem': if (String(d.assunto || '').trim() === '' || String(d.texto || '').trim().length < 5) return Promise.reject(new Error('Escreva o assunto e a mensagem.')); D.msgs.push({ id: D.id(), assunto: d.assunto, texto: d.texto, criado: new Date().toISOString().slice(0, 19), status: 'recebida' }); return ok({ status: 'recebida' });
     case 'listar_mensagens': return ok(D.msgs.slice().reverse());
+    case 'cambio_cotacoes': {
+      if (window.__cambioFalha) return Promise.reject(new Error('Sem conexão com o servidor. Tente de novo.'));
+      const base = { USD: [5.42, 5.43], EUR: [6.25, 6.27], GBP: [7.2, 7.22], ARS: [0.0056, 0.0058], BTC: [350000, 350900], JPY: [0.0352, 0.0356], ETH: [18000, 18050] }, agora = hojeISO() + 'T' + new Date().toTimeString().slice(0, 8), cot = {}, falhas = [];
+      (d.moedas || []).forEach(c => { const b = base[c] || [1 + (c.charCodeAt(0) + c.charCodeAt(1)) % 40 / 10, 0]; if (!b[1]) b[1] = b[0] * 1.01; const pct = ((c.charCodeAt(2) % 9) - 4) / 10; cot[c] = { codigo: c, nome: c, compra: b[0], venda: b[1], max: b[1] * 1.01, min: b[0] * 0.99, variacao: b[0] * pct / 100, pct, atualizado: agora, desatualizado: false }; });
+      return ok({ cotacoes: cot, falhas, fonte: 'Demonstração (valores fictícios)', aviso: 'Valores de referência, podem diferir da cotação praticada por bancos e corretoras.' });
+    }
+    case 'cambio_historico': {
+      if (window.__cambioFalha) return Promise.reject(new Error('Sem conexão.'));
+      const n = [7, 30, 180, 365].includes(Number(d.dias)) ? Number(d.dias) : 30, serie = [];
+      for (let i = n - 1; i >= 0; i--) { const t = new Date(); t.setDate(t.getDate() - i); serie.push({ data: t.toISOString().slice(0, 10), valor: 5 + Math.sin((n - i) / 9) * 0.3 + (n - i) * 0.002 }); }
+      return ok({ moeda: d.moeda, dias: n, serie, desatualizado: false });
+    }
+    case 'cambio_taxa': return ok({ moeda: d.moeda, data: d.data, taxa: d.tipo === 'despesa' ? 5.43 : 5.42, base: d.tipo === 'despesa' ? 'venda' : 'compra', desatualizada: false, fonte: 'Demonstração' });
+    case 'cambio_favoritos': return ok({ moedas: D.cambioFav, padrao: false });
+    case 'cambio_favoritar': D.cambioFav = d.moedas.slice(); return ok({ moedas: D.cambioFav });
+    case 'cambio_alertas': return ok(D.cambioAlertas);
+    case 'cambio_alerta_salvar': { const a = D.cambioAlertas.find(x => x.id === d.id); if (a) Object.assign(a, { moeda: d.moeda, direcao: d.direcao, valor: d.valor, ativo: true }); else D.cambioAlertas.push({ id: D.id(), moeda: d.moeda, direcao: d.direcao, valor: d.valor, ativo: true }); return ok({}); }
+    case 'cambio_alerta_excluir': D.cambioAlertas.splice(D.cambioAlertas.findIndex(x => x.id === d.id), 1); return ok({});
+    case 'cambio_verificar_alertas': {
+      const novos = []; D.cambioAlertas.filter(a => a.ativo).forEach(a => { const compra = ({ USD: 5.42, EUR: 6.25, GBP: 7.2 })[a.moeda] || 0; if (compra && (a.direcao === 'acima' ? compra >= a.valor : compra <= a.valor)) { a.ativo = false; const al = { id: D.id(), mes: mesAtual(), limiteId: a.id, nivel: 'cambio', gasto: compra, limite: a.valor, criado: new Date().toISOString().slice(0, 19), enviado: '', mensagem: 'Cotação: ' + a.moeda + ' ' + (a.direcao === 'acima' ? 'subiu até ' : 'caiu até ') + brl(a.valor) + ' (agora ' + brl(compra) + ').' }; D.alertas.push(al); novos.push(al); } });
+      return ok({ alertas: novos });
+    }
     case 'resumo': return ok(resumo(d.mes));
     case 'exportar_dados': return ok({ Contas: D.contas, Categorias: D.cats, Lancamentos: D.lanc, Orcamentos: D.orcs, Metas: D.metas });
     case 'apagar_conta_usuario': return ok({ apagado: true });
@@ -949,7 +979,7 @@ async function vJornada(raiz) {
   CB.call('enterJourney', spacer, lista);
   Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes }).catch(() => null)]).then(([r, c]) => CB.call('setData', r, c)).catch(() => { /* cartões ficam sem números */ });
 }
-const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, perfil: vPerfil, ajuda: vAjuda, cartoes: vCartoes, invest: vInvest, agenda: vAgenda, limites: vLimites, cons: vCons };
+const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, cambio: vCambio, perfil: vPerfil, ajuda: vAjuda, cartoes: vCartoes, invest: vInvest, agenda: vAgenda, limites: vLimites, cons: vCons };
 
 async function vPainel(raiz) {
   const [res, con] = await Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes })]);
@@ -973,7 +1003,7 @@ async function vPainel(raiz) {
   raiz.replaceChildren(
     el('div', { class: 'grid g-hero' }, hero, stat('Receitas', res.receitas, 'pos'), stat('Despesas', res.despesas, 'neg'), stat('Sobra do mês', res.saldoMes, res.saldoMes >= 0 ? 'pos' : 'neg')),
     el('div', { class: 'grid g-2 stack' }, barrasCard, roscaCard),
-    el('div', { class: 'grid g-eq' }, orcCard, conCard), el('div', { class: 'stack' }, cardExportar()));
+    el('div', { class: 'grid g-eq' }, orcCard, conCard), el('div', { class: 'grid g-eq stack' }, cardCambioPainel(), cardExportar()));
 }
 
 async function vLanc(raiz) {
@@ -989,22 +1019,40 @@ async function vLanc(raiz) {
   const atualizaCats = () => cat.replaceChildren(el('option', { value: '' }, 'Sem categoria'), ...S.cats.filter(c => c.tipo === tipo && !c.arquivada).map(c => el('option', { value: c.id }, (c.icone || '') + ' ' + c.nome)));
   atualizaCats();
   const bDesp = el('button', { type: 'button', class: 'on out' }, 'Despesa'), bRec = el('button', { type: 'button' }, 'Receita');
-  const troca = t => { tipo = t; bDesp.className = t === 'despesa' ? 'on out' : ''; bRec.className = t === 'receita' ? 'on' : ''; atualizaCats(); };
+  const moedaSel = selecao([{ v: 'BRL', t: 'R$ · Real' }, ...MOEDAS.slice(0, 14).map(m => ({ v: m.c, t: m.c + ' · ' + m.n }))]);
+  const taxaIn = el('input', { inputmode: 'decimal', placeholder: 'Ex.: 5,4123', autocomplete: 'off', 'aria-label': 'Cotação usada em reais' });
+  const taxaBox = campo('Cotação usada (R$)', taxaIn), convTxt = el('div', { class: 'small mute', style: 'grid-column:1/-1', role: 'status' }); taxaBox.style.display = 'none';
+  const cv = campo('Valor (R$)', valor), lblValor = cv.querySelector('span');
+  const atualizaConv = () => { const v = parseValor(valor.value), t = parseValor(taxaIn.value); convTxt.textContent = moedaSel.value !== 'BRL' && v > 0 && t > 0 ? fmtMoeda(moedaSel.value, v) + ' × ' + rs(t) + ' = ' + brl(Math.round(v * t * 100) / 100) : ''; };
+  const carregaTaxa = async () => {
+    const m = moedaSel.value; lblValor.textContent = m === 'BRL' ? 'Valor (R$)' : 'Valor (' + m + ')'; taxaBox.style.display = m === 'BRL' ? 'none' : ''; convTxt.textContent = '';
+    if (m === 'BRL') return;
+    try { const r = await api('cambio_taxa', { moeda: m, data: data.value, tipo }); if (moedaSel.value === m) { taxaIn.value = r.taxa.toLocaleString('pt-BR', { maximumFractionDigits: 6 }); convTxt.dataset.base = r.base; } }
+    catch (e) { taxaIn.value = ''; toast('Cotação indisponível: digite a taxa manualmente.'); }
+    atualizaConv();
+  };
+  moedaSel.onchange = carregaTaxa; data.onchange = carregaTaxa; valor.addEventListener('input', atualizaConv); taxaIn.addEventListener('input', atualizaConv);
+  const troca = t => { tipo = t; bDesp.className = t === 'despesa' ? 'on out' : ''; bRec.className = t === 'receita' ? 'on' : ''; atualizaCats(); if (moedaSel.value !== 'BRL') carregaTaxa(); };
   bDesp.onclick = () => troca('despesa'); bRec.onclick = () => troca('receita');
   const form = el('form', { class: 'f', onsubmit: tentar(async () => {
-    const v = parseValor(valor.value);
+    let v = parseValor(valor.value);
     if (!(v > 0)) throw new Error('Informe um valor maior que zero.');
-    const salvo = await api('salvar_lancamento', { tipo, valor: v, data: data.value, contaId: conta.value, categoriaId: cat.value, descricao: desc.value, tags: tagsIn.value });
+    const ext = {};
+    if (moedaSel.value !== 'BRL') {
+      const t = parseValor(taxaIn.value); if (!(t > 0)) throw new Error('Informe a cotação usada.');
+      Object.assign(ext, { moeda: moedaSel.value, valorOrig: v, cotacao: t }); v = Math.round(v * t * 100) / 100;
+    }
+    const salvo = await api('salvar_lancamento', { ...ext, tipo, valor: v, data: data.value, contaId: conta.value, categoriaId: cat.value, descricao: desc.value, tags: tagsIn.value });
     toast('Lançamento salvo.', 'ok'); avisaAlertas(salvo && salvo.alertas); await ir('lanc');
   }) }, el('div', { class: 'campo' }, el('span', null, 'Tipo'), el('div', { class: 'seg' }, bDesp, bRec)),
-    campo('Valor (R$)', valor), campo('Data', data), campo('Conta', conta), campo('Categoria', cat), campo('Descrição', desc), campo('Tags (separe por vírgula)', tagsIn), dl,
+    cv, campo('Moeda', moedaSel), taxaBox, convTxt, campo('Data', data), campo('Conta', conta), campo('Categoria', cat), campo('Descrição', desc), campo('Tags (separe por vírgula)', tagsIn), dl,
     el('button', { class: 'btn', type: 'submit' }, 'Salvar'));
 
   const nomeCat = id => (S.cats.find(c => c.id === id) || {}).nome || 'Sem categoria';
   const nomeConta = id => (S.contas.find(c => c.id === id) || {}).nome || '';
   const itens = lista.length ? lista.map((l, i) => el('div', { class: 'item', style: '--i:' + Math.min(i, 20) },
     el('i', { class: 'dot', style: 'color:' + corDe(l.categoriaId, 0) + ';background:' + corDe(l.categoriaId, 0) }),
-    el('div', { class: 't' }, el('b', null, l.descricao || nomeCat(l.categoriaId)), el('span', { class: 'small mute' }, dataBR(l.data) + ' · ' + nomeCat(l.categoriaId) + ' · ' + nomeConta(l.contaId)),
+    el('div', { class: 't' }, el('b', null, l.descricao || nomeCat(l.categoriaId)), el('span', { class: 'small mute' }, dataBR(l.data) + ' · ' + nomeCat(l.categoriaId) + ' · ' + nomeConta(l.contaId) + (l.moeda ? ' · ' + fmtMoeda(l.moeda, l.valorOrig) + ' a ' + rs(l.cotacao) : '')),
       (l.tags && l.tags.length) ? el('span', { class: 'tags' }, l.tags.map(t => el('em', null, '#' + t))) : ''),
     el('span', { class: 'v ' + (l.tipo === 'receita' ? 'pos' : 'neg') }, (l.tipo === 'receita' ? '+ ' : '− ') + brl(l.valor)),
     el('button', { class: 'x', 'aria-label': 'Excluir lançamento', onclick: tentar(async () => { if (!confirm('Excluir este lançamento?')) return; await api('excluir_lancamento', { id: l.id }); toast('Lançamento excluído.'); await ir('lanc'); }) }, '×')))
@@ -1278,7 +1326,7 @@ async function vAgenda(raiz) {
 }
 
 /* ======================= limites de gastos ======================= */
-const NIVEL_TXT = { ok: ['Dentro do limite', '#22D3EE'], aviso: ['Atenção (80%)', '#fbbf24'], atingido: ['Limite atingido', '#fb923c'], excedido: ['Limite excedido', '#ef4444'] };
+const NIVEL_TXT = { cambio: ['Cotação', '#22D3EE'], ok: ['Dentro do limite', '#22D3EE'], aviso: ['Atenção (80%)', '#fbbf24'], atingido: ['Limite atingido', '#fb923c'], excedido: ['Limite excedido', '#ef4444'] };
 async function vLimites(raiz) {
   const [lims, alertas] = await Promise.all([api('listar_limites', { mes: S.mes }), api('listar_alertas')]);
   const esc = selecao([{ v: 'geral', t: 'Gasto geral do mês' }, { v: 'conta', t: 'Uma conta' }, { v: 'cartao', t: 'Um cartão' }, { v: 'categoria', t: 'Uma categoria' }]);
@@ -1517,6 +1565,189 @@ async function vAjuda(raiz) {
         el('form', { class: 'f', onsubmit: tentar(async () => { await api('enviar_mensagem', { assunto: ass.value, texto: tx.value }); ass.value = ''; tx.value = ''; toast('Mensagem enviada. Obrigado!', 'ok'); carrega(); }) },
           campo('Assunto', ass), el('div', { style: 'grid-column:1/-1' }, campo('Mensagem', tx)), el('button', { class: 'btn', type: 'submit' }, 'Enviar'))),
       el('div', { class: 'card glass reveal' }, el('h3', null, 'Minhas mensagens'), minhas)));
+}
+
+/* ======================= câmbio ======================= */
+// [código, nome, país, símbolo, casas decimais, apelidos de busca]
+const MOEDAS = [
+  ['USD', 'Dólar americano', 'Estados Unidos', 'US$', 2, 'dolar dollar americano eua'], ['EUR', 'Euro', 'Zona do Euro', '€', 2, 'euros europa uniao europeia'],
+  ['GBP', 'Libra esterlina', 'Reino Unido', '£', 2, 'libra inglaterra uk'], ['ARS', 'Peso argentino', 'Argentina', 'AR$', 2, 'peso argentina'],
+  ['BTC', 'Bitcoin', 'Criptomoeda', '₿', 8, 'bitcoin cripto btc'], ['ETH', 'Ethereum', 'Criptomoeda', 'Ξ', 6, 'ethereum eth cripto ether'],
+  ['JPY', 'Iene japonês', 'Japão', '¥', 0, 'iene yen japao'], ['CAD', 'Dólar canadense', 'Canadá', 'CA$', 2, 'dolar canada'], ['AUD', 'Dólar australiano', 'Austrália', 'A$', 2, 'dolar australia'],
+  ['CHF', 'Franco suíço', 'Suíça', 'CHF', 2, 'franco suica'], ['CNY', 'Yuan chinês', 'China', 'CN¥', 2, 'yuan renminbi china'], ['CLP', 'Peso chileno', 'Chile', 'CLP', 0, 'peso chile'],
+  ['MXN', 'Peso mexicano', 'México', 'MX$', 2, 'peso mexico'], ['UYU', 'Peso uruguaio', 'Uruguai', '$U', 2, 'peso uruguai'], ['PYG', 'Guarani paraguaio', 'Paraguai', '₲', 0, 'guarani paraguai'],
+  ['BOB', 'Boliviano', 'Bolívia', 'Bs', 2, 'boliviano bolivia'], ['COP', 'Peso colombiano', 'Colômbia', 'COP', 0, 'peso colombia'], ['PEN', 'Sol peruano', 'Peru', 'S/', 2, 'sol peru'],
+  ['INR', 'Rupia indiana', 'Índia', '₹', 2, 'rupia india'], ['ZAR', 'Rand sul-africano', 'África do Sul', 'R', 2, 'rand africa do sul'], ['TRY', 'Lira turca', 'Turquia', '₺', 2, 'lira turquia'],
+  ['AED', 'Dirham dos Emirados', 'Emirados Árabes', 'AED', 2, 'dirham emirados dubai'], ['SEK', 'Coroa sueca', 'Suécia', 'kr', 2, 'coroa suecia'], ['NOK', 'Coroa norueguesa', 'Noruega', 'kr', 2, 'coroa noruega'],
+  ['DKK', 'Coroa dinamarquesa', 'Dinamarca', 'kr', 2, 'coroa dinamarca'], ['NZD', 'Dólar neozelandês', 'Nova Zelândia', 'NZ$', 2, 'dolar nova zelandia'], ['KRW', 'Won sul-coreano', 'Coreia do Sul', '₩', 0, 'won coreia'],
+  ['SGD', 'Dólar de Singapura', 'Singapura', 'S$', 2, 'dolar singapura'], ['HKD', 'Dólar de Hong Kong', 'Hong Kong', 'HK$', 2, 'dolar hong kong'], ['ILS', 'Novo shekel', 'Israel', '₪', 2, 'shekel israel'],
+  ['PLN', 'Zloty polonês', 'Polônia', 'zł', 2, 'zloty polonia'], ['LTC', 'Litecoin', 'Criptomoeda', 'Ł', 6, 'litecoin cripto'], ['USDT', 'Tether (USDT)', 'Criptomoeda', 'USDT', 2, 'tether usdt cripto']
+].map(m => ({ c: m[0], n: m[1], p: m[2], s: m[3], d: m[4], k: semAcento(m.join(' ')) }));
+const moedaInfo = c => MOEDAS.find(m => m.c === c) || { c, n: c, p: '', s: c, d: 2, k: c.toLowerCase() };
+const ISO_OK = c => !['BTC', 'ETH', 'LTC', 'USDT'].includes(c);
+// valor numa moeda, no padrão pt-BR (símbolo e casas decimais corretos)
+function fmtMoeda(c, v) {
+  const m = moedaInfo(c);
+  if (c === 'BRL') return brl(v);
+  if (ISO_OK(c)) { try { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: c, minimumFractionDigits: m.d, maximumFractionDigits: m.d }).format(v); } catch (e) { /* cai no formato manual */ } }
+  return m.s + ' ' + v.toLocaleString('pt-BR', { minimumFractionDigits: Math.min(m.d, 2), maximumFractionDigits: m.d });
+}
+// cotação em reais: mais casas para valores pequenos
+const rs = v => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: v >= 100 ? 2 : 4, maximumFractionDigits: v >= 100 ? 2 : 4 });
+const horaBR = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + ' ' + iso.slice(11, 16) : '';
+
+// cache local: se a API cair, a tela segue mostrando a última cotação (marcada como desatualizada)
+const CACHE_CB = { ler() { try { return JSON.parse(localStorage.getItem('rumo_cambio') || '{}'); } catch (e) { return {}; } }, gravar(o) { try { localStorage.setItem('rumo_cambio', JSON.stringify(o)); } catch (e) { /* ok */ } } };
+async function cotacoes(codes) {
+  codes = [...new Set(codes)].filter(Boolean);
+  const guardado = CACHE_CB.ler();
+  try {
+    const r = await api('cambio_cotacoes', { moedas: codes });
+    Object.keys(r.cotacoes).forEach(c => { if (!r.cotacoes[c].desatualizado) guardado[c] = r.cotacoes[c]; });
+    CACHE_CB.gravar(guardado);
+    return { cot: r.cotacoes, falhas: r.falhas, fonte: r.fonte, aviso: r.aviso, offline: false };
+  } catch (e) {
+    const cot = {}, falhas = [];
+    codes.forEach(c => { if (guardado[c]) cot[c] = Object.assign({}, guardado[c], { desatualizado: true }); else falhas.push(c); });
+    return { cot, falhas, fonte: 'AwesomeAPI (última cotação guardada neste aparelho)', aviso: 'Valores de referência, podem diferir da cotação praticada por bancos e corretoras.', offline: true };
+  }
+}
+function graficoLinha(serie, moeda) {
+  const W = 620, H = 240, pl = 8, pr = 8, pt = 14, pb = 26;
+  const vals = serie.map(p => p.valor), mn = Math.min(...vals), mx = Math.max(...vals), fo = (mx - mn) || mn * 0.02 || 1;
+  const x = i => pl + (W - pl - pr) * (serie.length > 1 ? i / (serie.length - 1) : 0.5), y = v => pt + (H - pt - pb) * (1 - (v - (mn - fo * 0.08)) / (fo * 1.16));
+  const svg = sv('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'Histórico de ' + moeda + ' em reais: de ' + rs(vals[0]) + ' a ' + rs(vals[vals.length - 1]) });
+  const d = serie.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.valor).toFixed(1)).join('');
+  svg.append(sv('defs', null, sv('linearGradient', { id: 'gcb', x1: 0, y1: 0, x2: 0, y2: 1 }, sv('stop', { offset: '0', 'stop-color': '#22D3EE', 'stop-opacity': '.35' }), sv('stop', { offset: '1', 'stop-color': '#22D3EE', 'stop-opacity': '0' }))));
+  svg.append(sv('path', { d: d + 'L' + x(serie.length - 1) + ' ' + (H - pb) + 'L' + x(0) + ' ' + (H - pb) + 'Z', fill: 'url(#gcb)' }), sv('path', { d, fill: 'none', stroke: '#22D3EE', 'stroke-width': 2.2, 'stroke-linejoin': 'round' }));
+  svg.append(sv('text', { x: pl, y: H - 8, class: 'eixo' }, serie[0].data.split('-').reverse().join('/')), sv('text', { x: W - pr, y: H - 8, 'text-anchor': 'end', class: 'eixo' }, serie[serie.length - 1].data.split('-').reverse().join('/')),
+    sv('text', { x: pl, y: 11, class: 'eixo' }, 'máx. ' + rs(mx)), sv('text', { x: W - pr, y: 11, 'text-anchor': 'end', class: 'eixo' }, 'mín. ' + rs(mn)));
+  const dot = sv('circle', { r: 5, fill: '#fff', stroke: '#22D3EE', 'stroke-width': 2, opacity: 0 }), tip = el('div', { class: 'cb-tip', hidden: true });
+  const alvo = sv('rect', { x: 0, y: 0, width: W, height: H, fill: 'transparent', style: 'touch-action:pan-y;cursor:crosshair' });
+  const mover = ev => { const r = svg.getBoundingClientRect(), f = (ev.clientX - r.left) / r.width * W; let i = Math.round((f - pl) / ((W - pl - pr) / Math.max(1, serie.length - 1))); i = Math.max(0, Math.min(serie.length - 1, i));
+    dot.setAttribute('cx', x(i)); dot.setAttribute('cy', y(serie[i].valor)); dot.setAttribute('opacity', 1); tip.hidden = false; tip.textContent = serie[i].data.split('-').reverse().join('/') + ' · ' + rs(serie[i].valor);
+    tip.style.left = Math.min(Math.max(x(i) / W * 100, 14), 86) + '%'; };
+  alvo.addEventListener('pointermove', mover); alvo.addEventListener('pointerdown', mover); alvo.addEventListener('pointerleave', () => { dot.setAttribute('opacity', 0); tip.hidden = true; });
+  svg.append(dot, alvo);
+  return el('div', { class: 'cb-graf' }, svg, tip);
+}
+
+async function vCambio(raiz) {
+  const fav0 = await api('cambio_favoritos').catch(() => ({ moedas: ['USD', 'EUR', 'GBP', 'ARS', 'BTC'] }));
+  let favs = fav0.moedas.slice(), sel = favs[0] || 'USD', dias = 30, Q = {};
+  const favBox = el('div', { class: 'grid g-cards cb-favs' }), det = el('div'), graf = el('div'), conv = el('div'), alertasBox = el('div');
+  // --- busca com autocomplete
+  const busca = el('input', { type: 'search', role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'cb-sug', 'aria-autocomplete': 'list', placeholder: 'Buscar moeda: dólar, USD, euro, libra, iene, bitcoin…', autocomplete: 'off', 'aria-label': 'Buscar moeda' });
+  const sug = el('ul', { id: 'cb-sug', class: 'cb-sug', role: 'listbox', hidden: true }); let ativo = -1, achados = [];
+  const fecha = () => { sug.hidden = true; busca.setAttribute('aria-expanded', 'false'); ativo = -1; };
+  const escolhe = c => { sel = c; busca.value = ''; fecha(); detalhe(); };
+  const pinta = () => { sug.replaceChildren(...achados.map((m, i) => el('li', { role: 'option', 'aria-selected': String(i === ativo), class: i === ativo ? 'on' : '', onmousedown: ev => { ev.preventDefault(); escolhe(m.c); } }, el('b', null, m.c), ' ', m.n, el('span', { class: 'small mute' }, ' · ' + m.p)))); };
+  busca.oninput = () => {
+    const q = semAcento(busca.value).trim().split(/\s+/).filter(Boolean);
+    if (!q.length) { fecha(); return; }
+    achados = MOEDAS.filter(m => q.every(w => m.k.includes(w))).sort((a, b) => (semAcento(a.c) === q[0] ? -1 : 0) - (semAcento(b.c) === q[0] ? -1 : 0)).slice(0, 8);
+    sug.hidden = false; busca.setAttribute('aria-expanded', 'true'); ativo = achados.length ? 0 : -1;
+    if (!achados.length) sug.replaceChildren(el('li', { class: 'mute', role: 'presentation' }, 'Nenhuma moeda encontrada.')); else pinta();
+  };
+  busca.onkeydown = ev => {
+    if (ev.key === 'ArrowDown' && achados.length) { ev.preventDefault(); ativo = (ativo + 1) % achados.length; pinta(); }
+    else if (ev.key === 'ArrowUp' && achados.length) { ev.preventDefault(); ativo = (ativo - 1 + achados.length) % achados.length; pinta(); }
+    else if (ev.key === 'Enter' && ativo >= 0) { ev.preventDefault(); escolhe(achados[ativo].c); }
+    else if (ev.key === 'Escape' && !sug.hidden) { ev.stopPropagation(); fecha(); }
+  };
+  busca.onblur = () => setTimeout(fecha, 120);
+  // --- favoritos
+  const salvaFavs = tentar(async () => { await api('cambio_favoritar', { moedas: favs }); });
+  const alternaFav = c => { favs = favs.includes(c) ? favs.filter(x => x !== c) : [...favs, c]; salvaFavs(); cartoesFav(); detalhe(); };
+  const varTxt = (v, p) => (v >= 0 ? '▲ ' : '▼ ') + Math.abs(p).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+  async function cartoesFav() {
+    favBox.replaceChildren(...favs.map(c => el('button', { type: 'button', class: 'card glass cb-fav' + (c === sel ? ' on' : ''), 'data-c': c, onclick: () => { sel = c; detalhe(); cartoesFav(); } },
+      el('b', null, c), el('span', { class: 'small mute' }, moedaInfo(c).n), el('span', { class: 'cb-v', 'data-v': c }, Q[c] ? rs(Q[c].venda || Q[c].compra) : '…'),
+      Q[c] ? el('span', { class: 'small ' + (Q[c].pct >= 0 ? 'pos' : 'neg') }, varTxt(Q[c].variacao, Q[c].pct)) : '')));
+    if (!favs.length) favBox.replaceChildren(el('div', { class: 'vazio' }, 'Nenhuma moeda favorita. Busque uma moeda e toque na estrela.'));
+  }
+  // --- detalhe da moeda
+  async function detalhe() {
+    const c = sel, info = moedaInfo(c);
+    det.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, info.n + ' (' + c + ')'), el('div', { class: 'skel', style: 'height:90px' })));
+    const r = await cotacoes([c, ...favs]); Q = Object.assign(Q, r.cot); cartoesFav();
+    const q = r.cot[c];
+    det.replaceChildren(el('div', { class: 'card glass reveal cb-det' },
+      el('div', { class: 'row' }, el('h3', { style: 'margin:0' }, info.n + ' (' + c + ') · ' + info.p), el('button', { class: 'btn ghost mini', type: 'button', 'aria-pressed': String(favs.includes(c)), onclick: () => alternaFav(c) }, favs.includes(c) ? '★ Favorita' : '☆ Favoritar')),
+      q ? el('div', null,
+        el('div', { class: 'cb-pares' }, el('div', null, el('span', { class: 'small mute' }, 'Compra'), el('div', { class: 'stat', 'data-compra': c }, rs(q.compra))), el('div', null, el('span', { class: 'small mute' }, 'Venda'), el('div', { class: 'stat', 'data-venda': c }, rs(q.venda)))),
+        el('div', { class: 'cb-linha' }, el('span', null, 'Variação no dia: '), el('b', { class: q.pct >= 0 ? 'pos' : 'neg' }, (q.variacao >= 0 ? '+' : '−') + rs(Math.abs(q.variacao)) + ' (' + varTxt(q.variacao, q.pct) + ')')),
+        el('div', { class: 'cb-linha' }, el('span', null, 'Máxima: ' + rs(q.max) + ' · Mínima: ' + rs(q.min))),
+        el('div', { class: 'small mute' }, 'Atualizado em ' + horaBR(q.atualizado)), q.desatualizado ? el('div', { class: 'small aviso-ex', role: 'status' }, '⚠ Desatualizado: a cotação ao vivo não está disponível agora. Mostrando a última obtida (' + horaBR(q.atualizado) + ').') : '')
+        : el('div', { class: 'vazio' }, 'Cotação indisponível agora para ' + c + '. Tente de novo em instantes.'),
+      el('p', { class: 'small mute', style: 'margin:10px 0 0' }, 'Fonte: ' + r.fonte + '. ' + r.aviso)));
+    rodaGrafico(); montaConversor();
+  }
+  // --- gráfico
+  const filtros = el('div', { class: 'seg', role: 'group', 'aria-label': 'Período do gráfico' });
+  [[7, '7 dias'], [30, '30 dias'], [180, '6 meses'], [365, '1 ano']].forEach(([d, t]) => filtros.append(el('button', { type: 'button', 'data-d': d, class: d === dias ? 'on' : '', onclick: () => { dias = d; filtros.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.d === d)); rodaGrafico(); } }, t)));
+  async function rodaGrafico() {
+    const c = sel; graf.replaceChildren(el('div', { class: 'skel', style: 'height:200px' }));
+    try {
+      const h = await api('cambio_historico', { moeda: c, dias });
+      if (c !== sel) return;
+      if (h.serie.length < 2) throw new Error('pouco dado');
+      graf.replaceChildren(graficoLinha(h.serie, c), h.desatualizado ? el('div', { class: 'small aviso-ex' }, '⚠ Histórico desatualizado (cópia guardada).') : '');
+    } catch (e) { if (c === sel) graf.replaceChildren(el('div', { class: 'vazio' }, 'Histórico indisponível agora.')); }
+  }
+  // --- conversor
+  let cvDe = 'USD', cvPara = 'BRL';
+  async function montaConversor() {
+    const val = el('input', { inputmode: 'decimal', value: '100', 'aria-label': 'Valor a converter', autocomplete: 'off' });
+    const opc = c => el('option', { value: c }, c + ' · ' + (c === 'BRL' ? 'Real brasileiro' : moedaInfo(c).n));
+    const de = el('select', { 'aria-label': 'De' }, ...['BRL', ...MOEDAS.map(m => m.c)].map(opc)), para = el('select', { 'aria-label': 'Para' }, ...['BRL', ...MOEDAS.map(m => m.c)].map(opc));
+    if (cvDe === 'BRL' && cvPara === 'BRL') cvDe = 'USD';
+    de.value = cvDe === 'USD' && sel !== 'USD' && cvPara === 'BRL' ? sel : cvDe; cvDe = de.value; para.value = cvPara;
+    const out = el('div', { class: 'cb-res', role: 'status', 'aria-live': 'polite' }), nota = el('div', { class: 'small mute' });
+    const calc = async () => {
+      const v = parseValor(val.value); cvDe = de.value; cvPara = para.value;
+      if (!(v >= 0) || !isFinite(v)) { out.textContent = '—'; return; }
+      if (cvDe === cvPara) { out.textContent = fmtMoeda(cvPara, v); nota.textContent = 'Mesma moeda.'; return; }
+      const need = [cvDe, cvPara].filter(c => c !== 'BRL'), r = await cotacoes(need);
+      if (need.some(c => !r.cot[c])) { out.textContent = '—'; nota.textContent = 'Cotação indisponível para ' + need.filter(c => !r.cot[c]).join(', ') + '.'; return; }
+      // quem vende a moeda ao banco recebe a compra; quem compra paga a venda
+      const brlDe = cvDe === 'BRL' ? 1 : r.cot[cvDe].compra, brlPara = cvPara === 'BRL' ? 1 : r.cot[cvPara].venda;
+      const res = v * brlDe / brlPara, taxa = brlDe / brlPara;
+      out.textContent = fmtMoeda(cvPara, res);
+      nota.textContent = '1 ' + cvDe + ' = ' + taxa.toLocaleString('pt-BR', { maximumFractionDigits: taxa < 1 ? 8 : 4 }) + ' ' + cvPara + (need.some(c => r.cot[c].desatualizado) ? ' · ⚠ cotação desatualizada' : '');
+    };
+    val.oninput = calc; de.onchange = calc; para.onchange = calc;
+    const inv = el('button', { class: 'btn ghost', type: 'button', 'aria-label': 'Inverter moedas', onclick: () => { const t = de.value; de.value = para.value; para.value = t; calc(); } }, '⇄');
+    conv.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, 'Conversor'), el('div', { class: 'cb-conv' }, campo('Valor', val), campo('De', de), inv, campo('Para', para)), out, nota,
+      el('p', { class: 'small mute', style: 'margin:8px 0 0' }, 'Usa a compra da moeda que você vende e a venda da que você compra.')));
+    calc();
+  }
+  // --- alertas de cotação
+  async function alertas() {
+    const lista = await api('cambio_alertas').catch(() => []);
+    const mo = selecao(MOEDAS.map(m => ({ v: m.c, t: m.c + ' · ' + m.n })), sel), di = selecao([{ v: 'acima', t: 'subir até' }, { v: 'abaixo', t: 'cair até' }]);
+    const va = el('input', { inputmode: 'decimal', required: true, placeholder: '5,50', autocomplete: 'off', 'aria-label': 'Cotação alvo em reais' });
+    alertasBox.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, 'Alertas de cotação'),
+      el('form', { class: 'f', onsubmit: tentar(async () => { const v = parseValor(va.value); if (!(v > 0)) throw new Error('Informe a cotação alvo.'); await api('cambio_alerta_salvar', { moeda: mo.value, direcao: di.value, valor: v }); toast('Alerta criado.', 'ok'); alertas(); }) },
+        campo('Avisar quando', mo), campo('Ao', di), campo('Cotação (R$)', va), el('button', { class: 'btn', type: 'submit' }, 'Criar alerta')),
+      el('div', { class: 'lista', style: 'margin-top:12px' }, lista.length ? lista.map(a => el('div', { class: 'item' }, el('div', { class: 't' }, el('b', null, a.moeda + ' ' + (a.direcao === 'acima' ? '≥ ' : '≤ ') + rs(a.valor)), el('span', { class: 'small mute' }, a.ativo ? 'Ativo' : 'Já avisou · toque para reativar')),
+        a.ativo ? '' : el('button', { class: 'btn ghost mini', type: 'button', onclick: tentar(async () => { await api('cambio_alerta_salvar', { id: a.id, moeda: a.moeda, direcao: a.direcao, valor: a.valor }); alertas(); }) }, 'Reativar'),
+        el('button', { class: 'x', 'aria-label': 'Excluir alerta', onclick: tentar(async () => { await api('cambio_alerta_excluir', { id: a.id }); alertas(); }) }, '×'))) : [el('div', { class: 'vazio' }, 'Sem alertas. Você é avisado no app quando a compra chegar na cotação.')]),
+      el('p', { class: 'small mute', style: 'margin:8px 0 0' }, 'Os avisos aparecem no app (e no histórico de Limites) quando você abre o Rumo. É a mesma central de alertas dos limites de gastos.')));
+  }
+  raiz.replaceChildren(el('div', { class: 'card glass reveal cb-busca' }, el('h3', null, 'Câmbio'), el('div', { class: 'cb-wrap' }, busca, sug)), favBox, det,
+    el('div', { class: 'card glass reveal' }, el('div', { class: 'row', style: 'display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px' }, el('h3', { style: 'margin:0' }, 'Histórico em reais'), filtros), graf), conv, alertasBox);
+  cartoesFav(); detalhe(); alertas();
+  api('cambio_verificar_alertas').then(r => avisaAlertas(r.alertas)).catch(() => {});
+}
+
+// Painel: cotações do dia (USD e EUR) sem atrasar a tela
+function cardCambioPainel() {
+  const corpo = el('div', { class: 'cb-mini' }, el('span', { class: 'small mute' }, 'Carregando…'));
+  const card = el('div', { class: 'card glass tilt reveal', 'data-card': 'cambio' }, el('h3', null, 'Câmbio hoje'), corpo, el('div', { style: 'margin-top:12px' }, el('button', { class: 'btn ghost mini', type: 'button', onclick: () => ir('cambio') }, 'Abrir câmbio')));
+  cotacoes(['USD', 'EUR']).then(r => corpo.replaceChildren(...['USD', 'EUR'].map(c => r.cot[c] ? el('div', { class: 'row', style: 'display:flex;justify-content:space-between;gap:8px' }, el('b', null, c), el('span', null, rs(r.cot[c].venda || r.cot[c].compra)),
+    el('span', { class: 'small ' + (r.cot[c].pct >= 0 ? 'pos' : 'neg') }, (r.cot[c].pct >= 0 ? '▲ ' : '▼ ') + Math.abs(r.cot[c].pct).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%'), r.cot[c].desatualizado ? el('span', { class: 'small aviso-ex', title: 'cotação desatualizada' }, '⚠') : '') : el('div', { class: 'small mute' }, c + ': indisponível')), el('div', { class: 'small mute' }, 'Valores de referência.'))).catch(() => { corpo.textContent = 'Indisponível agora.'; });
+  return card;
 }
 
 async function vCons(raiz) {

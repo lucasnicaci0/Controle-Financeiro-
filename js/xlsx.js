@@ -65,8 +65,8 @@
   // Monta as 3 abas a partir das linhas do back-end (exportar_lancamentos).
   function abasDeLancamentos(rows) {
     const r2 = n => Math.round(n * 100) / 100, soma = a => r2(a.reduce((s, x) => s + x, 0));
-    const lanc = { nome: 'Lançamentos', filtro: true, colunas: [{ titulo: 'Data', tipo: 'data', largura: 12 }, { titulo: 'Tipo', largura: 11 }, { titulo: 'Descrição', largura: 34 }, { titulo: 'Categoria', largura: 22 }, { titulo: 'Conta', largura: 20 }, { titulo: 'Tags', largura: 20 }, { titulo: 'Valor (R$)', tipo: 'moeda', largura: 16 }],
-      linhas: rows.map(l => [l.data, l.tipo === 'receita' ? 'Receita' : 'Despesa', l.descricao, l.categoria, l.conta, l.tags, l.tipo === 'receita' ? l.valor : -l.valor]) };
+    const lanc = { nome: 'Lançamentos', filtro: true, colunas: [{ titulo: 'Data', tipo: 'data', largura: 12 }, { titulo: 'Tipo', largura: 11 }, { titulo: 'Descrição', largura: 34 }, { titulo: 'Categoria', largura: 22 }, { titulo: 'Conta', largura: 20 }, { titulo: 'Tags', largura: 20 }, { titulo: 'Valor (R$)', tipo: 'moeda', largura: 16 }, { titulo: 'Moeda original', largura: 14 }, { titulo: 'Valor original', tipo: 'numero', largura: 14 }, { titulo: 'Cotação usada', tipo: 'numero', largura: 14 }],
+      linhas: rows.map(l => [l.data, l.tipo === 'receita' ? 'Receita' : 'Despesa', l.descricao, l.categoria, l.conta, l.tags, l.tipo === 'receita' ? l.valor : -l.valor, l.moeda || '', l.valorOrig || '', l.cotacao || '']) };
     const por = (chave) => { const m = {}; rows.forEach(l => { const k = chave(l); (m[k] = m[k] || []).push(l); }); return m; };
     const cat = por(l => l.tipo + '|' + l.categoria), totTipo = { receita: soma(rows.filter(l => l.tipo === 'receita').map(l => l.valor)), despesa: soma(rows.filter(l => l.tipo === 'despesa').map(l => l.valor)) };
     const linhasCat = Object.keys(cat).map(k => { const [t, n] = k.split('|'), tot = soma(cat[k].map(l => l.valor)); return { t, n, q: cat[k].length, tot }; })

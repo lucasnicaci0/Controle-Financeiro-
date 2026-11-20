@@ -84,3 +84,11 @@ O canvas respeita o `devicePixelRatio` (limite 1,5x / 2x / 3x conforme a GPU), o
 - **Configurações** (aba *Opções*): tema **Claro / Escuro / Automático** (claro vale nas telas internas; a Jornada 3D continua escura), tamanho do texto, paletas + cor personalizada (com garantia de contraste também no tema claro), **densidade** (compacta/normal/confortável), **cantos** (reto a arredondado) e efeitos. Tudo aplica em tempo real, fica salvo no aparelho e na conta (vale em outros aparelhos). *Restaurar esta seção* em cada bloco e *Restaurar tudo ao padrão* no fim.
 - **Ajuda e contato** (menu da foto): FAQ com busca (ignora acento) antes do contato; botões WhatsApp (`wa.me` com mensagem pronta) e e-mail (`mailto`); mensagem pelo app, salva na aba `Mensagens` (limite de 5 por dia). **Perguntas, número e e-mail ficam em `config.js`** (hoje são exemplos).
 - Testes: `teste_gs5.js` e `teste_fase4_ui.js`.
+
+## Câmbio (item 16)
+- Aba **Câmbio**: busca com autocomplete (nome/código/país: dólar, USD, euro, libra, iene, peso argentino, bitcoin…), compra/venda, variação do dia (R$ e %), máx/mín, hora da atualização, conversor com inverter e resultado ao digitar, gráfico 7d/30d/6m/1a, favoritos por usuário (padrão USD, EUR, GBP, ARS, BTC) e alertas de cotação (mesma central de alertas dos Limites).
+- Painel: cartão "Câmbio hoje" (USD e EUR). Lançamentos: campo **Moeda**; grava o valor em R$ + valor original + cotação do dia (editável).
+- Fonte: AwesomeAPI via back-end (cache de 5 min). Chave opcional na Script Property `AWESOMEAPI_KEY` (nunca vai ao navegador). Se a API cair, mostra a última cotação guardada marcada como "desatualizada" com a hora.
+- Aviso fixo: "Valores de referência, podem diferir da cotação praticada por bancos e corretoras."
+- Testes: `node apps-script/teste_gs6.js` e `node apps-script/teste_cambio_ui.js`.
+- Após atualizar o `Code.gs`: rode `autorizar` e publique **nova versão** da implantação.
