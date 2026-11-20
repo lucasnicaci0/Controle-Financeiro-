@@ -70,3 +70,10 @@ O canvas respeita o `devicePixelRatio` (limite 1,5x / 2x / 3x conforme a GPU), o
 - **Envio de notificações:** a função `notificar_` do `Code.gs` é o ponto de extensão. Já envia e-mail se você criar a Propriedade do script `NOTIFICAR_EMAIL = sim` (pede uma permissão nova ao rodar `autorizar` de novo). WhatsApp/push ficam para a Fase 5.
 - Tabelas novas na planilha: `Agenda`, `Limites`, `Alertas`, `Feeds` (criadas por `autorizar`).
 - Testes: `teste_gs3.js` (back-end) e `teste_fase2_ui.js` (interface, desktop e celular).
+
+## Fase 3 — Cartões, Metas de investimento e Investimentos (v1.3.0)
+
+- **Cartões** (aba nova): usa as contas do tipo *Cartão*. Mostra limite, disponível, saldo devedor, fatura atual (gastos desde o último fechamento menos estornos), data de fechamento e vencimento. Contas ganharam as colunas `Limite`, `DiaFechamento`, `DiaVencimento` e `Marca` (migração automática). **Não inventa dados:** o que não foi informado aparece como "Falta informar: …". Limitação: faturas já fechadas não são detalhadas e o pagamento da fatura precisa ser lançado como receita no cartão (ou pela Agenda).
+- **Metas:** mantidas; nova opção *Meta de investimento* com aporte mensal, previsão de conclusão pelo aporte e quanto aportar por mês para chegar no prazo.
+- **Investimentos** (aba nova): carteira com ações, FIIs, renda fixa, cripto e outros; quantidade, preço médio, valor atual, retorno (R$ e %) e distribuição por classe. Entrada manual. Para cotação automática já existe o ponto de extensão `buscarCotacoes_` no `Code.gs` e o botão "Atualizar cotações" (hoje informa que não está ligada). Aviso fixo: "Informação para acompanhamento, não é recomendação de investimento."
+- Testes: `teste_gs4.js` e `teste_fase3_ui.js`.

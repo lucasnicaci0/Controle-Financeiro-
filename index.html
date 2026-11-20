@@ -103,6 +103,8 @@ button,input,select{font:inherit;color:inherit}
 .lim{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.07)}.lim .row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
 .lim-barra{position:relative;height:12px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden;margin-bottom:6px}.lim-barra i{display:block;height:100%;border-radius:99px;transition:width .6s}
 .lim-barra u{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,255,255,.55)}
+.dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:12px 0}.dl dt{color:var(--mute);font-size:.85rem}.dl dd{margin:0;text-align:right;font-weight:600}
+.cartao .row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
 .cat-ico{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:12px;border:1px solid;font-size:1.2rem;flex:none}
 .cat-ico.grande{width:52px;height:52px;font-size:1.6rem}
 .item.arq{opacity:.6}
@@ -266,6 +268,8 @@ body.in-app #scrim{opacity:1}
         <button data-v="metas">Metas</button>
         <button data-v="contas">Contas</button>
         <button data-v="cats">Categorias</button>
+        <button data-v="cartoes">Cartões</button>
+        <button data-v="invest">Investimentos</button>
         <button data-v="agenda">Agenda</button>
         <button data-v="limites">Limites</button>
         <button data-v="cons">Consultor</button>
@@ -544,7 +548,7 @@ const demoDB = (() => {
   });
   const orcs = [{ id: id(), categoriaId: cat('Alimentação'), mes: mesAtual(), limite: 620 }, { id: id(), categoriaId: cat('Lazer'), mes: mesAtual(), limite: 300 }];
   const metas = [{ id: id(), nome: 'Viagem de férias', valorAlvo: 6000, valorAtual: 2200, prazo: somarMes(mesAtual(), 8) + '-15' }, { id: id(), nome: 'Reserva de emergência', valorAlvo: 15000, valorAtual: 3000, prazo: '' }];
-  return { id, cats, contas, lanc, orcs, metas, agenda: [], limites: [], alertas: [] };
+  return { id, cats, contas, lanc, orcs, metas, agenda: [], limites: [], alertas: [], ativos: [] };
 })();
 
 
@@ -598,9 +602,38 @@ function demo(acao, d) {
     case 'salvar_orcamento': { const o = D.orcs.find(x => x.categoriaId === d.categoriaId && x.mes === d.mes); if (o) o.limite = parseValor(d.limite); else D.orcs.push({ id: D.id(), categoriaId: d.categoriaId, mes: d.mes, limite: parseValor(d.limite) }); return ok({}); }
     case 'excluir_orcamento': D.orcs.splice(D.orcs.findIndex(o => o.id === d.id), 1); return ok({});
     case 'listar_metas': return ok(D.metas);
-    case 'salvar_meta': { const m = D.metas.find(x => x.id === d.id); const novo = { nome: d.nome, valorAlvo: parseValor(d.valorAlvo), valorAtual: d.valorAtual === undefined ? 0 : parseValor(d.valorAtual), prazo: d.prazo || '' }; if (m) Object.assign(m, novo); else D.metas.push({ id: D.id(), ...novo }); return ok({}); }
+    case 'salvar_meta': { const m = D.metas.find(x => x.id === d.id); const novo = { nome: d.nome, valorAlvo: parseValor(d.valorAlvo), valorAtual: d.valorAtual === undefined ? 0 : parseValor(d.valorAtual), prazo: d.prazo || '', tipo: d.tipo || (m && m.tipo) || 'geral', aporte: d.aporte !== undefined ? Number(d.aporte) || 0 : (m && m.aporte) || 0 }; if (m) Object.assign(m, novo); else D.metas.push({ id: D.id(), ...novo }); return ok({}); }
     case 'excluir_meta': D.metas.splice(D.metas.findIndex(m => m.id === d.id), 1); return ok({});
-    case 'salvar_conta': D.contas.push({ id: D.id(), nome: d.nome, tipo: d.tipo, saldoInicial: parseValor(d.saldoInicial) || 0 }); return ok({});
+    case 'salvar_conta': {
+      const c = D.contas.find(x => x.id === d.id), ex = { limite: Number(d.limite) || 0, diaFechamento: Number(d.diaFechamento) || 0, diaVencimento: Number(d.diaVencimento) || 0, marca: d.marca || '' };
+      if (c) Object.assign(c, { nome: d.nome, tipo: d.tipo }, d.limite !== undefined ? ex : {}); else D.contas.push({ id: D.id(), nome: d.nome, tipo: d.tipo, saldoInicial: parseValor(d.saldoInicial) || 0, ...ex });
+      return ok({});
+    }
+    case 'listar_cartoes': {
+      const hoje = hojeISO(), sal = saldos();
+      return ok(D.contas.filter(c => c.tipo === 'cartao').map(c => {
+        const lim = c.limite || 0, fe = c.diaFechamento || 0, ve = c.diaVencimento || 0, saldo = sal.find(x => x.id === c.id).saldo, div = Math.max(0, -saldo);
+        const mm = hoje.slice(0, 7), pad = n => String(n).padStart(2, '0'), fimMes = mm + '-' + pad(fe);
+        const fech = fe ? (hoje <= fimMes ? fimMes : somarMes(mm, 1) + '-' + pad(fe)) : '';
+        const ini = fe ? (hoje <= fimMes ? somarMes(mm, -1) + '-' + pad(fe) : fimMes) : '';
+        const fat = fe ? Math.max(0, movs().filter(l => l.contaId === c.id && l.data > ini && l.data <= fech).reduce((s, l) => s + (l.tipo === 'despesa' ? l.valor : -l.valor), 0)) : null;
+        const venc = fe && ve ? (ve > fe ? fech.slice(0, 7) : somarMes(fech.slice(0, 7), 1)) + '-' + pad(ve) : '';
+        return { id: c.id, nome: c.nome, marca: c.marca || '', limite: lim, diaFechamento: fe, diaVencimento: ve, saldo, divida: div, disponivel: lim ? lim - div : null, usoPct: lim ? Math.round(div / lim * 100) : null, faturaAtual: fat, fechamento: fech, vencimento: venc,
+          diasParaVencer: venc ? Math.round((Date.parse(venc) - Date.parse(hoje)) / 864e5) : null, faltando: [!lim && 'limite', !fe && 'dia de fechamento', !ve && 'dia de vencimento'].filter(Boolean) };
+      }));
+    }
+    case 'listar_investimentos': {
+      const at = D.ativos.map(a => { const pa = a.precoAtual === '' ? a.precoMedio : a.precoAtual, inv = a.quantidade * a.precoMedio, atual = a.quantidade * pa; return { ...a, precoAtual: pa, investido: inv, valorAtual: atual, retorno: atual - inv, retornoPct: inv ? Math.round((atual - inv) / inv * 10000) / 100 : 0 }; });
+      const tot = k => at.reduce((s, a) => s + a[k], 0), cls = {}; at.forEach(a => { cls[a.classe] = (cls[a.classe] || 0) + a.valorAtual; });
+      return ok({ ativos: at, investido: tot('investido'), valorAtual: tot('valorAtual'), retorno: tot('valorAtual') - tot('investido'), retornoPct: tot('investido') ? Math.round((tot('valorAtual') - tot('investido')) / tot('investido') * 10000) / 100 : 0,
+        porClasse: Object.keys(cls).map(k => ({ classe: k, nome: CLASSES_INV[k], valor: cls[k], pct: Math.round(cls[k] / tot('valorAtual') * 1000) / 10 })), cotacoesAutomaticas: false, aviso: 'Informação para acompanhamento, não é recomendação de investimento.' });
+    }
+    case 'salvar_investimento': {
+      const novo = { nome: d.nome, ticker: String(d.ticker || '').toUpperCase(), classe: CLASSES_INV[d.classe] ? d.classe : 'outros', quantidade: Number(d.quantidade), precoMedio: Number(d.precoMedio), precoAtual: d.precoAtual === '' ? '' : Number(d.precoAtual), atualizadoEm: d.precoAtual === '' ? '' : hojeISO() };
+      const a = D.ativos.find(x => x.id === d.id); if (a) Object.assign(a, novo); else D.ativos.push({ id: D.id(), ...novo }); return ok({});
+    }
+    case 'excluir_investimento': D.ativos.splice(D.ativos.findIndex(x => x.id === d.id), 1); return ok({});
+    case 'atualizar_cotacoes': return ok({ atualizados: 0, motivo: 'Cotação automática ainda não está ligada. Informe o preço atual manualmente.' });
     case 'excluir_conta': if (movs().some(l => l.contaId === d.id)) return Promise.reject(new Error('A conta tem lançamentos. Apague-os antes.')); D.contas.splice(D.contas.findIndex(c => c.id === d.id), 1); return ok({});
     case 'salvar_categoria': {
       const nome = String(d.nome || '').trim(); if (!nome) return Promise.reject(new Error('Informe o nome da categoria.'));
@@ -862,7 +895,7 @@ async function vJornada(raiz) {
   CB.call('enterJourney', spacer, lista);
   Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes }).catch(() => null)]).then(([r, c]) => CB.call('setData', r, c)).catch(() => { /* cartões ficam sem números */ });
 }
-const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, agenda: vAgenda, limites: vLimites, cons: vCons };
+const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, cartoes: vCartoes, invest: vInvest, agenda: vAgenda, limites: vLimites, cons: vCons };
 
 async function vPainel(raiz) {
   const [res, con] = await Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes })]);
@@ -979,22 +1012,35 @@ async function vOrc(raiz) {
     el('div', { class: 'stack' }, el('div', { class: 'card glass reveal' }, el('h3', null, 'Acompanhamento'), lista)));
 }
 
+function previsaoMeta(m) {
+  const falta = Math.max(0, m.valorAlvo - m.valorAtual); if (!falta) return 'Meta atingida! 🎉';
+  const partes = [];
+  if (m.aporte > 0) { const n = Math.ceil(falta / m.aporte), fim = somarMes(mesAtual(), n); partes.push('Aportando ' + brl(m.aporte) + '/mês: ' + n + ' mese(s), por volta de ' + mesNome(fim, true) + '.'); }
+  else partes.push('Defina um aporte mensal para ver a previsão.');
+  if (m.prazo) { const [py, pm] = m.prazo.split('-').map(Number), [cy, cm] = mesAtual().split('-').map(Number), meses = (py - cy) * 12 + (pm - cm); if (meses > 0) partes.push('Para chegar no prazo: ' + brl(falta / meses) + '/mês.'); else partes.push('Prazo vencido.'); }
+  return partes.join(' ');
+}
 async function vMetas(raiz) {
   const metas = await api('listar_metas');
   const nome = el('input', { required: true, maxlength: '60', placeholder: 'Ex.: Viagem', autocomplete: 'off' });
   const alvo = el('input', { inputmode: 'decimal', required: true, placeholder: '5.000,00', autocomplete: 'off' });
   const atual = el('input', { inputmode: 'decimal', placeholder: '0,00', autocomplete: 'off' });
   const prazo = el('input', { type: 'date' });
+  const tipoM = selecao([{ v: 'geral', t: 'Meta comum' }, { v: 'investimento', t: 'Meta de investimento' }]);
+  const aporteM = el('input', { inputmode: 'decimal', placeholder: '0,00', autocomplete: 'off', 'aria-label': 'Aporte mensal' });
+  const campoAporte = campo('Aporte mensal (R$)', aporteM); campoAporte.style.display = 'none';
+  tipoM.onchange = () => { campoAporte.style.display = tipoM.value === 'investimento' ? '' : 'none'; };
   const form = el('form', { class: 'f', onsubmit: tentar(async () => {
     const a = parseValor(alvo.value); if (!(a > 0)) throw new Error('Informe o valor da meta.');
     const v = atual.value.trim() ? parseValor(atual.value) : 0; if (!(v >= 0)) throw new Error('Valor atual inválido.');
-    await api('salvar_meta', { nome: nome.value, valorAlvo: a, valorAtual: v, prazo: prazo.value }); toast('Meta criada.', 'ok'); await ir('metas');
-  }) }, campo('Nome', nome), campo('Valor da meta (R$)', alvo), campo('Já guardei (R$)', atual), campo('Prazo (opcional)', prazo), el('button', { class: 'btn', type: 'submit' }, 'Criar meta'));
+    await api('salvar_meta', { nome: nome.value, valorAlvo: a, valorAtual: v, prazo: prazo.value, tipo: tipoM.value, aporte: tipoM.value === 'investimento' && aporteM.value.trim() ? parseValor(aporteM.value) : 0 }); toast('Meta criada.', 'ok'); await ir('metas');
+  }) }, campo('Nome', nome), campo('Valor da meta (R$)', alvo), campo('Já guardei (R$)', atual), campo('Prazo (opcional)', prazo), campo('Tipo', tipoM), campoAporte, el('button', { class: 'btn', type: 'submit' }, 'Criar meta'));
   const cards = metas.length ? el('div', { class: 'grid g-cards' }, metas.map((m, i) => {
     const p = m.valorAlvo > 0 ? m.valorAtual / m.valorAlvo : 0;
     return el('div', { class: 'card glass tilt reveal meta' }, anel(p, PALETA[i % PALETA.length]), el('b', null, m.nome),
       el('div', { class: 'small mute' }, brl(m.valorAtual) + ' de ' + brl(m.valorAlvo)),
       m.prazo ? el('div', { class: 'small mute' }, 'até ' + m.prazo.split('-').reverse().join('/')) : null,
+      m.tipo === 'investimento' ? el('div', { class: 'small', style: 'margin-top:6px' }, el('span', { class: 'chip' }, '📈 Investimento'), el('div', { class: 'mute', style: 'margin-top:6px' }, previsaoMeta(m))) : null,
       el('div', { class: 'acoes' },
         el('button', { class: 'btn', onclick: tentar(async () => {
           const r = prompt('Quanto você guardou agora? (R$)'); if (r == null) return;
@@ -1236,6 +1282,86 @@ function cardExportar() {
   });
   return el('div', { class: 'card glass reveal' }, el('h3', null, 'Exportar para Excel'), el('p', { class: 'mute' }, 'Planilha .xlsx com as abas Lançamentos, Resumo por categoria e Resumo por conta.'),
     el('div', { class: 'f' }, campo('Período', per), campo('Conta', cn), campo('Categoria', ct), campo('Tipo', tp), el('div', null, b)));
+}
+
+/* ======================= cartões ======================= */
+async function vCartoes(raiz) {
+  const cartoes = await api('listar_cartoes');
+  let editando = null; const formBox = el('div');
+  const dtBR = d => d ? d.slice(8, 10) + '/' + d.slice(5, 7) : '—';
+  const form = () => {
+    const c = editando;
+    const nome = el('input', { required: true, maxlength: '60', placeholder: 'Ex.: Cartão Roxo', autocomplete: 'off', value: c ? c.nome : '' });
+    const marca = selecao([['', 'Bandeira (opcional)'], ['Visa', 'Visa'], ['Mastercard', 'Mastercard'], ['Elo', 'Elo'], ['American Express', 'American Express'], ['Hipercard', 'Hipercard'], ['Outra', 'Outra']].map(x => ({ v: x[0], t: x[1] })), c ? c.marca : '');
+    const lim = el('input', { inputmode: 'decimal', placeholder: '5.000,00', autocomplete: 'off', value: c && c.limite ? String(c.limite).replace('.', ',') : '' });
+    const fe = el('input', { type: 'number', min: '1', max: '31', placeholder: 'Ex.: 10', value: c && c.diaFechamento ? c.diaFechamento : '' });
+    const ve = el('input', { type: 'number', min: '1', max: '31', placeholder: 'Ex.: 17', value: c && c.diaVencimento ? c.diaVencimento : '' });
+    formBox.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, c ? 'Editar cartão' : 'Novo cartão'),
+      el('form', { class: 'f', onsubmit: tentar(async () => {
+        const l = lim.value.trim() ? parseValor(lim.value) : 0; if (!isFinite(l) || l < 0) throw new Error('Limite inválido.');
+        await api('salvar_conta', { id: c ? c.id : '', nome: nome.value, tipo: 'cartao', limite: l, diaFechamento: fe.value, diaVencimento: ve.value, marca: marca.value });
+        toast('Cartão salvo.', 'ok'); await ir('cartoes');
+      }) }, campo('Nome', nome), campo('Bandeira', marca), campo('Limite total (R$)', lim), campo('Dia do fechamento', fe), campo('Dia do vencimento', ve),
+        el('div', { style: 'display:flex;gap:8px;grid-column:1/-1;flex-wrap:wrap' }, el('button', { class: 'btn', type: 'submit' }, c ? 'Salvar' : 'Adicionar cartão'), c ? el('button', { class: 'btn ghost', type: 'button', onclick: () => { editando = null; form(); } }, 'Cancelar') : ''))));
+  };
+  form();
+  const cards = cartoes.length ? el('div', { class: 'grid g-cards' }, cartoes.map((c, i) => {
+    const cor = c.usoPct == null ? '#8B5CF6' : c.usoPct >= 100 ? '#ef4444' : c.usoPct >= 80 ? '#fbbf24' : '#22D3EE';
+    return el('div', { class: 'card glass tilt reveal cartao' },
+      el('div', { class: 'row' }, el('b', null, '💳 ' + c.nome), c.marca ? el('span', { class: 'chip' }, c.marca) : ''),
+      el('div', { class: 'small mute' }, 'Fatura atual'), el('div', { class: 'stat' }, c.faturaAtual == null ? '—' : brl(c.faturaAtual)),
+      c.limite ? el('div', { class: 'lim-barra', role: 'progressbar', 'aria-valuenow': Math.min(c.usoPct, 100), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-label': 'Limite usado' }, el('i', { style: 'width:' + Math.min(c.usoPct, 100) + '%;background:' + cor })) : '',
+      el('dl', { class: 'dl' },
+        el('dt', null, 'Limite'), el('dd', null, c.limite ? brl(c.limite) : '—'),
+        el('dt', null, 'Disponível'), el('dd', { class: c.disponivel != null && c.disponivel < 0 ? 'neg' : '' }, c.disponivel == null ? '—' : brl(c.disponivel)),
+        el('dt', null, 'Saldo devedor'), el('dd', null, brl(c.divida)),
+        el('dt', null, 'Fecha em'), el('dd', null, dtBR(c.fechamento)),
+        el('dt', null, 'Vence em'), el('dd', null, dtBR(c.vencimento) + (c.diasParaVencer != null ? (c.diasParaVencer >= 0 ? ' (em ' + c.diasParaVencer + ' d)' : ' (venceu)') : ''))),
+      c.faltando.length ? el('div', { class: 'small aviso-ex', role: 'note' }, 'Falta informar: ' + c.faltando.join(', ') + '.') : '',
+      el('div', { class: 'acoes' }, el('button', { class: 'btn ghost mini', type: 'button', onclick: () => { editando = c; form(); scrollTo({ top: 0, behavior: reduz ? 'auto' : 'smooth' }); } }, 'Editar')));
+  })) : el('div', { class: 'card glass vazio' }, 'Nenhum cartão ainda. Cadastre o primeiro acima; ele também aparece em Contas e nos Lançamentos.');
+  raiz.replaceChildren(formBox, el('div', { class: 'stack' }, cards),
+    el('p', { class: 'small mute' }, 'A fatura é a soma dos gastos do cartão desde o último fechamento, menos estornos lançados nele. Para registrar o pagamento da fatura, lance uma receita no cartão (ou use a agenda). Faturas já fechadas não são detalhadas.'));
+}
+
+/* ======================= investimentos ======================= */
+const CLASSES_INV = { acao: 'Ações', fii: 'Fundos imobiliários', renda_fixa: 'Renda fixa', cripto: 'Criptomoedas', outros: 'Outros' };
+async function vInvest(raiz) {
+  const c = await api('listar_investimentos');
+  let editando = null; const formBox = el('div');
+  const pctTxt = v => (v >= 0 ? '+' : '−') + Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+  const form = () => {
+    const a = editando, num = v => (v == null || v === '' ? '' : String(v).replace('.', ','));
+    const nome = el('input', { required: true, maxlength: '60', placeholder: 'Ex.: Petrobras', autocomplete: 'off', value: a ? a.nome : '' });
+    const tick = el('input', { maxlength: '12', placeholder: 'Ex.: PETR4', autocomplete: 'off', value: a ? a.ticker : '' });
+    const cl = selecao(Object.keys(CLASSES_INV).map(k => ({ v: k, t: CLASSES_INV[k] })), a ? a.classe : 'acao');
+    const q = el('input', { inputmode: 'decimal', required: true, placeholder: '100', autocomplete: 'off', value: a ? num(a.quantidade) : '' });
+    const pm = el('input', { inputmode: 'decimal', required: true, placeholder: '0,00', autocomplete: 'off', value: a ? num(a.precoMedio) : '' });
+    const pa = el('input', { inputmode: 'decimal', placeholder: 'Se vazio, usa o preço médio', autocomplete: 'off', value: a ? num(a.precoAtual) : '' });
+    formBox.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, a ? 'Editar ativo' : 'Novo ativo'),
+      el('form', { class: 'f', onsubmit: tentar(async () => {
+        const vq = parseValor(q.value), vpm = parseValor(pm.value), vpa = pa.value.trim() ? parseValor(pa.value) : '';
+        if (!(vq > 0)) throw new Error('Informe a quantidade.'); if (!(vpm >= 0)) throw new Error('Informe o preço médio.');
+        await api('salvar_investimento', { id: a ? a.id : '', nome: nome.value, ticker: tick.value, classe: cl.value, quantidade: vq, precoMedio: vpm, precoAtual: vpa });
+        toast('Ativo salvo.', 'ok'); await ir('invest');
+      }) }, campo('Nome', nome), campo('Código (opcional)', tick), campo('Classe', cl), campo('Quantidade', q), campo('Preço médio pago (R$)', pm), campo('Preço atual (R$)', pa),
+        el('div', { style: 'display:flex;gap:8px;grid-column:1/-1;flex-wrap:wrap' }, el('button', { class: 'btn', type: 'submit' }, a ? 'Salvar' : 'Adicionar ativo'), a ? el('button', { class: 'btn ghost', type: 'button', onclick: () => { editando = null; form(); } }, 'Cancelar') : ''),
+        el('p', { class: 'small mute', style: 'grid-column:1/-1;margin:0' }, 'Renda fixa: use quantidade 1 e informe o valor aplicado e o valor de hoje. Os preços são digitados por você.'))));
+  };
+  form();
+  const stat = (r, v, cls) => el('div', { class: 'card glass tilt reveal' }, el('h3', null, r), el('div', { class: 'stat ' + (cls || '') }, v));
+  const resumo = el('div', { class: 'grid g-hero' }, stat('Total investido', brl(c.investido)), stat('Valor atual', brl(c.valorAtual)), stat('Retorno', brl(c.retorno) + ' · ' + pctTxt(c.retornoPct), c.retorno >= 0 ? 'pos' : 'neg'));
+  const dist = el('div', { class: 'card glass reveal' }, el('h3', null, 'Distribuição por classe'),
+    c.porClasse.length ? el('div', { class: 'orcs' }, c.porClasse.map((x, i) => el('div', null, el('div', { class: 'row' }, el('span', null, x.nome), el('span', null, brl(x.valor) + ' · ' + x.pct.toLocaleString('pt-BR') + '%')),
+      el('div', { class: 'lim-barra' }, el('i', { style: 'width:' + x.pct + '%;background:' + PALETA[i % 8] }))))) : el('div', { class: 'vazio' }, 'Cadastre ativos para ver a distribuição.'));
+  const lista = el('div', { class: 'card glass reveal' }, el('h3', null, 'Minha carteira'),
+    el('div', { class: 'lista' }, c.ativos.length ? c.ativos.map((a, i) => el('div', { class: 'item', style: '--i:' + Math.min(i, 20) },
+      el('div', { class: 't' }, el('b', null, a.nome + (a.ticker ? ' · ' + a.ticker : '')), el('span', { class: 'small mute' }, CLASSES_INV[a.classe] + ' · ' + a.quantidade.toLocaleString('pt-BR') + ' × ' + brl(a.precoMedio) + (a.atualizadoEm ? ' · preço de ' + a.atualizadoEm.split('-').reverse().join('/') : ' · sem preço atual'))),
+      el('span', { class: 'v' }, brl(a.valorAtual), el('small', { class: a.retorno >= 0 ? 'pos' : 'neg', style: 'display:block' }, brl(a.retorno) + ' (' + pctTxt(a.retornoPct) + ')')),
+      el('button', { class: 'btn ghost mini', type: 'button', onclick: () => { editando = a; form(); scrollTo({ top: 0, behavior: reduz ? 'auto' : 'smooth' }); } }, 'Editar'),
+      el('button', { class: 'x', 'aria-label': 'Excluir ' + a.nome, onclick: tentar(async () => { if (!confirm('Excluir "' + a.nome + '" da carteira?')) return; await api('excluir_investimento', { id: a.id }); await ir('invest'); }) }, '×'))) : [el('div', { class: 'vazio' }, 'Nenhum ativo ainda.')]),
+    el('div', { style: 'margin-top:14px' }, el('button', { class: 'btn ghost', type: 'button', onclick: tentar(async () => { const r = await api('atualizar_cotacoes'); toast(r.atualizados ? r.atualizados + ' preço(s) atualizado(s).' : r.motivo, r.atualizados ? 'ok' : ''); if (r.atualizados) await ir('invest'); }) }, 'Atualizar cotações')));
+  raiz.replaceChildren(resumo, el('div', { class: 'grid g-2 stack' }, dist, lista), formBox, el('p', { class: 'small mute', role: 'note' }, '⚠ ' + c.aviso));
 }
 
 async function vCons(raiz) {

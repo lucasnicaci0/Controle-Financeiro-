@@ -1,6 +1,6 @@
 /**
  * FINANÇAS DB — back-end em Google Apps Script + Google Planilhas
- * Versão 1.2.0
+ * Versão 1.3.0
  *
  * COMO USAR (resumo):
  *  1. Cole este arquivo em Extensões → Apps Script (script vinculado à planilha "Financas DB").
@@ -20,7 +20,7 @@
  * o que facilita trocar a planilha por outro banco no futuro.
  */
 
-var VERSAO = '1.2.0';
+var VERSAO = '1.3.0';
 
 var CONFIG = {
   CLIENT_ID: 'COLE_AQUI_O_ID_DO_CLIENTE_OAUTH',
@@ -36,22 +36,24 @@ var AVISO = 'Orientação educativa de planejamento financeiro. Não é recomend
 
 var TABELAS = {
   Usuarios:    ['Email', 'Nome', 'Criado', 'UltimoAcesso'],
-  Contas:      ['Id', 'Email', 'Nome', 'Tipo', 'SaldoInicial', 'Criado'],
+  Contas:      ['Id', 'Email', 'Nome', 'Tipo', 'SaldoInicial', 'Criado', 'Limite', 'DiaFechamento', 'DiaVencimento', 'Marca'],
   Categorias:  ['Id', 'Email', 'Nome', 'Tipo', 'Cor', 'Icone', 'Arquivada'],
   Lancamentos: ['Id', 'Email', 'Data', 'Tipo', 'Valor', 'ContaId', 'CategoriaId', 'Descricao', 'Chave', 'Criado', 'Tags'],
   Orcamentos:  ['Id', 'Email', 'CategoriaId', 'Mes', 'Limite'],
-  Metas:       ['Id', 'Email', 'Nome', 'ValorAlvo', 'ValorAtual', 'Prazo', 'Criado'],
+  Metas:       ['Id', 'Email', 'Nome', 'ValorAlvo', 'ValorAtual', 'Prazo', 'Criado', 'Tipo', 'Aporte'],
   // Reservada para a conversa com IA (fase 2). O motor de regras não grava aqui.
   Consultor:   ['Id', 'Email', 'Data', 'Papel', 'Texto'],
   // Fase 2
   Agenda:      ['Id', 'Email', 'Titulo', 'Tipo', 'Data', 'Valor', 'ContaId', 'CategoriaId', 'Recorrencia', 'LembreteDias', 'Fim', 'Concluidos', 'Criado'],
   Limites:     ['Id', 'Email', 'Escopo', 'AlvoId', 'Limite', 'Criado'],
   Alertas:     ['Id', 'Email', 'Mes', 'LimiteId', 'Nivel', 'Gasto', 'Limite', 'Criado', 'Mensagem', 'Enviado'],
-  Feeds:       ['Email', 'Token', 'Criado']
+  Feeds:       ['Email', 'Token', 'Criado'],
+  // Fase 3
+  Ativos:      ['Id', 'Email', 'Nome', 'Ticker', 'Classe', 'Quantidade', 'PrecoMedio', 'PrecoAtual', 'AtualizadoEm', 'Fonte', 'Criado']
 };
 
 // Colunas formatadas como texto: impedem que a planilha converta datas ou interprete fórmulas.
-var COLUNAS_TEXTO = ['Data', 'Mes', 'Prazo', 'Criado', 'UltimoAcesso', 'Nome', 'Descricao', 'Chave', 'Papel', 'Texto', 'Tags', 'Icone', 'Arquivada', 'Titulo', 'Fim', 'Concluidos', 'Token', 'Mensagem', 'Enviado', 'Escopo', 'AlvoId'];
+var COLUNAS_TEXTO = ['Data', 'Mes', 'Prazo', 'Criado', 'UltimoAcesso', 'Nome', 'Descricao', 'Chave', 'Papel', 'Texto', 'Tags', 'Icone', 'Arquivada', 'Titulo', 'Fim', 'Concluidos', 'Token', 'Mensagem', 'Enviado', 'Escopo', 'AlvoId', 'Marca', 'Ticker', 'Classe', 'AtualizadoEm', 'Fonte'];
 
 var TIPOS_CONTA = ['corrente', 'poupanca', 'reserva', 'investimento', 'dinheiro', 'cartao'];
 
@@ -132,7 +134,7 @@ function erro_(codigo, msg) {
 
 var LEITURAS = {
   listar_contas: 1, listar_categorias: 1, listar_lancamentos: 1, listar_orcamentos: 1,
-  listar_metas: 1, listar_tags: 1, listar_agenda: 1, listar_limites: 1, listar_alertas: 1, exportar_lancamentos: 1, resumo: 1, consultor: 1, exportar_dados: 1
+  listar_metas: 1, listar_tags: 1, listar_cartoes: 1, listar_investimentos: 1, listar_agenda: 1, listar_limites: 1, listar_alertas: 1, exportar_lancamentos: 1, resumo: 1, consultor: 1, exportar_dados: 1
 };
 
 function rotear_(corpo) {
@@ -386,13 +388,13 @@ function reatribuir_(email, de, para) {
 
 function sCategoria_(c) { return { id: c.Id, nome: c.Nome, tipo: c.Tipo, cor: c.Cor, icone: c.Icone || '🏷️', arquivada: String(c.Arquivada) === 'sim' }; }
 function tagsDe_(t) { return String(t || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
-function sConta_(c, saldo) { return { id: c.Id, nome: c.Nome, tipo: c.Tipo, saldoInicial: Number(c.SaldoInicial) || 0, saldo: saldo }; }
+function sConta_(c, saldo) { return { id: c.Id, nome: c.Nome, tipo: c.Tipo, saldoInicial: Number(c.SaldoInicial) || 0, saldo: saldo, limite: Number(c.Limite) || 0, diaFechamento: Number(c.DiaFechamento) || 0, diaVencimento: Number(c.DiaVencimento) || 0, marca: c.Marca || '' }; }
 function sLanc_(l) {
   return { id: l.Id, data: String(l.Data), tipo: l.Tipo, valor: Number(l.Valor), contaId: l.ContaId, categoriaId: l.CategoriaId, descricao: l.Descricao, tags: tagsDe_(l.Tags) };
 }
 function sOrc_(o) { return { id: o.Id, categoriaId: o.CategoriaId, mes: String(o.Mes), limite: Number(o.Limite) }; }
 function sMeta_(m) {
-  return { id: m.Id, nome: m.Nome, valorAlvo: Number(m.ValorAlvo), valorAtual: Number(m.ValorAtual) || 0, prazo: String(m.Prazo || '') };
+  return { id: m.Id, nome: m.Nome, valorAlvo: Number(m.ValorAlvo), valorAtual: Number(m.ValorAtual) || 0, prazo: String(m.Prazo || ''), tipo: m.Tipo === 'investimento' ? 'investimento' : 'geral', aporte: Number(m.Aporte) || 0 };
 }
 
 function movimentos_(email) {
@@ -481,7 +483,17 @@ var ACOES = {
     var nome = seguro_(d.nome, 60);
     if (!nome) throw erro_('nome_invalido', 'Informe o nome da conta.');
     var tipo = TIPOS_CONTA.indexOf(d.tipo) >= 0 ? d.tipo : 'corrente';
-    var r = upsert_('Contas', u.email, String(d.id || ''), { Nome: nome, Tipo: tipo, SaldoInicial: d.saldoInicial === undefined ? 0 : num_(d.saldoInicial) });
+    var id = String(d.id || ''), campos = { Nome: nome, Tipo: tipo };
+    if (d.saldoInicial !== undefined) campos.SaldoInicial = num_(d.saldoInicial); else if (!id) campos.SaldoInicial = 0;
+    if (d.limite !== undefined) { var lim = d.limite === '' ? 0 : num_(d.limite); if (!(lim >= 0)) throw erro_('valor_invalido', 'Limite inválido.'); campos.Limite = lim; }
+    ['diaFechamento', 'diaVencimento'].forEach(function (k) {
+      if (d[k] === undefined) return;
+      var n = d[k] === '' ? 0 : Math.round(Number(d[k]));
+      if (!(n >= 0 && n <= 31)) throw erro_('dia_invalido', 'Dia inválido (use de 1 a 31).');
+      campos[k === 'diaFechamento' ? 'DiaFechamento' : 'DiaVencimento'] = n;
+    });
+    if (d.marca !== undefined) campos.Marca = seguro_(d.marca, 20);
+    var r = upsert_('Contas', u.email, id, campos);
     return sConta_(r, saldos_(u.email)[r.Id] || 0);
   },
   excluir_conta: function (u, d) {
@@ -689,6 +701,33 @@ var ACOES = {
     });
   },
 
+  /* ---- cartões ---- */
+  listar_cartoes: function (u) { return cartoes_(u.email); },
+
+  /* ---- investimentos ---- */
+  listar_investimentos: function (u) { return resumoCarteira_(u.email); },
+  salvar_investimento: function (u, d) {
+    var nome = seguro_(d.nome, 60);
+    if (!nome) throw erro_('nome_invalido', 'Informe o nome do ativo.');
+    var classe = CLASSES_INV[d.classe] ? d.classe : 'outros', q = num_(d.quantidade), pm = num_(d.precoMedio);
+    if (!(q > 0)) throw erro_('valor_invalido', 'A quantidade deve ser maior que zero.');
+    if (!(pm >= 0)) throw erro_('valor_invalido', 'Preço médio inválido.');
+    var pa = d.precoAtual === '' || d.precoAtual === undefined || d.precoAtual === null ? '' : num_(d.precoAtual);
+    if (pa !== '' && !(pa >= 0)) throw erro_('valor_invalido', 'Preço atual inválido.');
+    var id = String(d.id || '');
+    if (!id && doUsuario_('Ativos', u.email).length >= 500) throw erro_('limite', 'Limite de ativos atingido.');
+    return sAtivo_(upsert_('Ativos', u.email, id, { Nome: nome, Ticker: seguro_(d.ticker, 12).toUpperCase(), Classe: classe, Quantidade: q, PrecoMedio: pm, PrecoAtual: pa, AtualizadoEm: pa === '' ? '' : hoje_(), Fonte: 'manual' }));
+  },
+  excluir_investimento: function (u, d) { return excluirPorId_('Ativos', u.email, d.id); },
+  atualizar_cotacoes: function (u) {
+    var ativos = doUsuario_('Ativos', u.email).filter(function (a) { return a.Ticker; });
+    var cot = buscarCotacoes_(ativos.map(function (a) { return a.Ticker; }));
+    if (!cot) return { atualizados: 0, motivo: 'Cotação automática ainda não está ligada. Informe o preço atual manualmente.' };
+    var n = 0;
+    ativos.forEach(function (a) { if (cot[a.Ticker] > 0) { atualizar_('Ativos', a._linha, Object.assign({}, a, { PrecoAtual: cot[a.Ticker], AtualizadoEm: hoje_(), Fonte: 'api' })); n++; } });
+    return { atualizados: n, motivo: '' };
+  },
+
   /* ---- orçamentos ---- */
   listar_orcamentos: function (u, d) {
     var mes = mesOu_(d.mes);
@@ -716,7 +755,10 @@ var ACOES = {
     if (atual < 0) throw erro_('valor_invalido', 'O valor atual não pode ser negativo.');
     var prazo = d.prazo ? String(d.prazo) : '';
     if (prazo && !dataOk_(prazo)) throw erro_('data_invalida', 'Prazo inválido (use AAAA-MM-DD).');
-    return sMeta_(upsert_('Metas', u.email, String(d.id || ''), { Nome: nome, ValorAlvo: alvo, ValorAtual: atual, Prazo: prazo }));
+    var campos = { Nome: nome, ValorAlvo: alvo, ValorAtual: atual, Prazo: prazo };
+    if (d.tipo !== undefined) campos.Tipo = d.tipo === 'investimento' ? 'investimento' : 'geral';
+    if (d.aporte !== undefined) { var ap = d.aporte === '' ? 0 : num_(d.aporte); if (!(ap >= 0)) throw erro_('valor_invalido', 'Aporte mensal inválido.'); campos.Aporte = ap; }
+    return sMeta_(upsert_('Metas', u.email, String(d.id || ''), campos));
   },
   excluir_meta: function (u, d) { return excluirPorId_('Metas', u.email, d.id); },
 
@@ -890,6 +932,67 @@ function notificar_(email, alerta) {
 
 function sAlerta_(a) { return { id: a.Id, mes: String(a.Mes), limiteId: a.LimiteId, nivel: a.Nivel, gasto: Number(a.Gasto), limite: Number(a.Limite), criado: a.Criado, mensagem: a.Mensagem, enviado: a.Enviado || '' }; }
 function mesesDe_(datas) { var m = {}; datas.forEach(function (d) { m[String(d).slice(0, 7)] = 1; }); return Object.keys(m).sort().slice(-12); }
+
+/* ======================= CARTÕES ======================= */
+
+function diaClamp_(mes, dia) { return mes + '-' + ('0' + Math.min(Number(dia), diasNoMes_(mes))).slice(-2); }
+
+// Ciclo da fatura em aberto: de (fechamento anterior + 1 dia) até o próximo fechamento.
+function cicloFatura_(hoje, diaFech) {
+  var mes = hoje.slice(0, 7), fimMes = diaClamp_(mes, diaFech), fim, ini;
+  if (hoje <= fimMes) { fim = fimMes; ini = somarDias_(diaClamp_(somarMes_(mes, -1), diaFech), 1); }
+  else { fim = diaClamp_(somarMes_(mes, 1), diaFech); ini = somarDias_(fimMes, 1); }
+  return { ini: ini, fim: fim };
+}
+
+function cartoes_(email) {
+  var hoje = hoje_(), movs = movimentos_(email), sal = saldos_(email);
+  return doUsuario_('Contas', email).filter(function (c) { return c.Tipo === 'cartao'; }).map(function (c) {
+    var lim = Number(c.Limite) || 0, fech = Number(c.DiaFechamento) || 0, venc = Number(c.DiaVencimento) || 0;
+    var saldo = sal[c.Id] || 0, divida = Math.max(0, Math.round(-saldo * 100) / 100);
+    var o = { id: c.Id, nome: c.Nome, marca: c.Marca || '', limite: lim, diaFechamento: fech, diaVencimento: venc, saldo: saldo, divida: divida,
+      disponivel: lim ? Math.round((lim - divida) * 100) / 100 : null, usoPct: lim ? Math.round(divida / lim * 100) : null,
+      faturaAtual: null, fechamento: '', vencimento: '', diasParaVencer: null, faltando: [] };
+    if (!lim) o.faltando.push('limite');
+    if (!fech) o.faltando.push('dia de fechamento');
+    if (!venc) o.faltando.push('dia de vencimento');
+    if (fech) {
+      var ci = cicloFatura_(hoje, fech), t = 0;
+      movs.forEach(function (m) { if (m.contaId === c.Id && m.data >= ci.ini && m.data <= ci.fim) t += m.tipo === 'despesa' ? m.valor : -m.valor; });
+      o.faturaAtual = Math.max(0, Math.round(t * 100) / 100); o.fechamento = ci.fim;
+      if (venc) {
+        var mFim = ci.fim.slice(0, 7), mv = venc > fech ? mFim : somarMes_(mFim, 1);
+        o.vencimento = diaClamp_(mv, venc); o.diasParaVencer = diasEntre_(hoje, o.vencimento);
+      }
+    }
+    return o;
+  });
+}
+
+/* ======================= INVESTIMENTOS ======================= */
+
+var CLASSES_INV = { acao: 'Ações', fii: 'Fundos imobiliários', renda_fixa: 'Renda fixa', cripto: 'Criptomoedas', outros: 'Outros' };
+var AVISO_INV = 'Informação para acompanhamento, não é recomendação de investimento.';
+
+function sAtivo_(a) {
+  var q = Number(a.Quantidade) || 0, pm = Number(a.PrecoMedio) || 0, pa = a.PrecoAtual === '' ? pm : Number(a.PrecoAtual);
+  var inv = Math.round(q * pm * 100) / 100, atual = Math.round(q * pa * 100) / 100;
+  return { id: a.Id, nome: a.Nome, ticker: a.Ticker || '', classe: a.Classe, quantidade: q, precoMedio: pm, precoAtual: pa, investido: inv, valorAtual: atual,
+    retorno: Math.round((atual - inv) * 100) / 100, retornoPct: inv > 0 ? Math.round((atual - inv) / inv * 10000) / 100 : 0, atualizadoEm: String(a.AtualizadoEm || ''), manual: !a.Fonte || a.Fonte === 'manual' };
+}
+
+// Ponto de extensão: troque pelo provedor de cotações escolhido (ex.: brapi, Alpha Vantage) guardando a chave em Propriedades do script.
+// Deve devolver { 'TICKER': preco }. Hoje não há provedor ligado: o preço atual é informado à mão.
+function buscarCotacoes_(tickers) { return null; }
+
+function resumoCarteira_(email) {
+  var ativos = doUsuario_('Ativos', email).map(sAtivo_), inv = 0, atual = 0, cls = {};
+  ativos.forEach(function (a) { inv += a.investido; atual += a.valorAtual; cls[a.classe] = (cls[a.classe] || 0) + a.valorAtual; });
+  inv = Math.round(inv * 100) / 100; atual = Math.round(atual * 100) / 100;
+  return { ativos: ativos, investido: inv, valorAtual: atual, retorno: Math.round((atual - inv) * 100) / 100, retornoPct: inv > 0 ? Math.round((atual - inv) / inv * 10000) / 100 : 0,
+    porClasse: Object.keys(cls).map(function (k) { return { classe: k, nome: CLASSES_INV[k], valor: Math.round(cls[k] * 100) / 100, pct: atual > 0 ? Math.round(cls[k] / atual * 1000) / 10 : 0 }; }).sort(function (a, b) { return b.valor - a.valor; }),
+    cotacoesAutomaticas: false, aviso: AVISO_INV };
+}
 
 /* ======================= RESUMO DO PAINEL ======================= */
 
