@@ -31,7 +31,7 @@ button,input,select{font:inherit;color:inherit}
 
 .glass{background:var(--glass);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);
   border:1px solid var(--line);border-radius:var(--r);box-shadow:0 10px 40px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.06)}
-.card{padding:20px}
+.card{padding:calc(20px*var(--dens,1))}
 .card h3{margin:0 0 14px;font-size:0.8667rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
 .mute{color:var(--mute)}
 .small{font-size:0.8333rem}
@@ -79,12 +79,12 @@ button,input,select{font:inherit;color:inherit}
 
 /* grades */
 .view{animation:rise .5s both}
-.grid{display:grid;gap:16px}
+.grid{display:grid;gap:calc(16px*var(--dens,1))}
 .g-hero{grid-template-columns:1.4fr 1fr 1fr 1fr}
 .g-2{grid-template-columns:1.5fr 1fr}
 .g-eq{grid-template-columns:1fr 1fr}
 .g-cards{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
-.stack{display:grid;gap:16px;margin-top:16px}
+.stack{display:grid;gap:calc(16px*var(--dens,1));margin-top:calc(16px*var(--dens,1))}
 @media(max-width:900px){.g-hero,.g-2,.g-eq{grid-template-columns:1fr 1fr}.g-hero .hero{grid-column:1/-1}}
 @media(max-width:620px){.g-hero,.g-2,.g-eq{grid-template-columns:1fr}
   .navwrap{position:fixed;bottom:max(12px,env(safe-area-inset-bottom));left:12px;right:12px;top:auto;margin:0}
@@ -105,6 +105,26 @@ button,input,select{font:inherit;color:inherit}
 .lim-barra u{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,255,255,.55)}
 .dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:12px 0}.dl dt{color:var(--mute);font-size:.85rem}.dl dd{margin:0;text-align:right;font-weight:600}
 .cartao .row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+/* tema claro (só nas telas internas; a Jornada 3D continua escura) */
+html[data-tema=claro]{color-scheme:light}
+html[data-tema=claro] body.in-app{--bg:#F4F1FF;--ink:#1B1033;--mute:#51437F;--line:rgba(81,67,127,.28);--glass:rgba(255,255,255,.88);--good:#047857;--warn:#92400e;--bad:#be123c;background:var(--bg)}
+html[data-tema=claro] body.in-app #fx,html[data-tema=claro] body.in-app canvas{opacity:0!important;pointer-events:none}
+html[data-tema=claro] body.in-app .glass{box-shadow:0 8px 30px rgba(60,30,140,.12)}
+html[data-tema=claro] body.in-app input,html[data-tema=claro] body.in-app select{background:#fff;color:var(--ink)}
+html[data-tema=claro] body.in-app select option{background:#fff;color:#1B1033}
+html[data-tema=claro] body.in-app .chip,html[data-tema=claro] body.in-app .btn.ghost,html[data-tema=claro] body.in-app .seg,html[data-tema=claro] body.in-app .dia,html[data-tema=claro] body.in-app .ico-grade button{background:rgba(81,67,127,.1)}
+html[data-tema=claro] body.in-app .seg button.on{color:#0B0618}
+html[data-tema=claro] body.in-app .lim-barra,html[data-tema=claro] body.in-app .ck{background:rgba(81,67,127,.15);border-color:rgba(81,67,127,.45)}
+html[data-tema=claro] body.in-app .item:hover{background:rgba(81,67,127,.08)}
+html[data-tema=claro] body.in-app .tags em{color:#3b1d8f;background:rgba(139,92,246,.18)}
+html[data-tema=claro] body.in-app .login h1{text-shadow:none}
+.avatar.grande{width:84px;height:84px;font-size:2rem;display:grid;place-items:center;flex:none}.foto-linha{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+dialog.crop{margin:auto;padding:20px;color:var(--ink);max-width:min(360px,94vw)}dialog.crop::backdrop{background:rgba(0,0,0,.65)}
+.crop-box{position:relative;width:min(280px,100%);margin:0 auto;aspect-ratio:1}.crop-cv{width:100%;height:100%;display:block;touch-action:none;cursor:grab;border-radius:12px}
+.crop-mask{position:absolute;inset:0;border-radius:12px;pointer-events:none;box-shadow:inset 0 0 0 2px rgba(255,255,255,.6);background:radial-gradient(circle,transparent 62%,rgba(0,0,0,.55) 63%)}
+.faq details{border-bottom:1px solid var(--line);padding:10px 0}.faq summary{cursor:pointer;font-weight:600}.faq details p{margin:8px 0 0;color:var(--mute)}
+textarea{width:100%;padding:11px 13px;border-radius:var(--rb,13px);border:1px solid var(--line);background:rgba(11,6,24,.6);font:inherit;color:inherit;resize:vertical}
+html[data-tema=claro] body.in-app textarea{background:#fff;color:var(--ink)}
 .cat-ico{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:12px;border:1px solid;font-size:1.2rem;flex:none}
 .cat-ico.grande{width:52px;height:52px;font-size:1.6rem}
 .item.arq{opacity:.6}
@@ -125,25 +145,25 @@ button,input,select{font:inherit;color:inherit}
 form.f{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end}
 .campo{display:grid;gap:5px}
 .campo span{font-size:0.8rem;color:var(--mute)}
-input,select{width:100%;padding:11px 13px;border-radius:13px;border:1px solid var(--line);background:rgba(11,6,24,.6);transition:border .2s, box-shadow .2s}
+input,select{width:100%;padding:11px 13px;border-radius:var(--rb,13px);border:1px solid var(--line);background:rgba(11,6,24,.6);transition:border .2s, box-shadow .2s}
 input:focus,select:focus{border-color:var(--a);box-shadow:0 0 0 3px rgba(34,211,238,.15);outline:0}
 select option{background:#0B0618}
 input[type=color]{padding:3px;height:44px}
-.btn{position:relative;overflow:hidden;border:0;border-radius:13px;padding:11px 18px;cursor:pointer;font-weight:600;color:#0B0618;
+.btn{position:relative;overflow:hidden;border:0;border-radius:var(--rb,13px);padding:11px 18px;cursor:pointer;font-weight:600;color:#0B0618;
   background:linear-gradient(120deg,var(--btn1),var(--btn2));box-shadow:0 8px 26px rgba(34,211,238,.22);transition:transform .2s, box-shadow .2s, filter .2s}
 .btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 14px 34px rgba(139,92,246,.35)}
 .btn:active:not(:disabled){transform:scale(.97)}
 .btn:disabled{opacity:.5;cursor:wait}
 .btn.ghost{background:rgba(255,255,255,.07);color:var(--ink);box-shadow:none}
 .btn.danger{background:linear-gradient(120deg,#fb7185,#FF4DA6);color:#220510}
-.seg{display:inline-flex;padding:4px;border-radius:13px;background:rgba(255,255,255,.06);gap:4px}
+.seg{display:inline-flex;padding:4px;border-radius:var(--rb,13px);background:rgba(255,255,255,.06);gap:4px}
 .seg button{border:0;background:none;padding:8px 16px;border-radius:10px;cursor:pointer;color:var(--mute);transition:.25s}
 .seg button.on{color:#0B0618;background:linear-gradient(120deg,var(--btn1),var(--btn2))}
 .seg button.on.out{background:linear-gradient(120deg,var(--c),#fb7185)}
 
 /* listas */
 .lista{display:grid;gap:4px}
-.item{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:14px;transition:background .2s, transform .2s;animation:rise .5s both;animation-delay:calc(var(--i,0)*35ms)}
+.item{display:flex;align-items:center;gap:12px;padding:calc(11px*var(--dens,1)) 12px;border-radius:14px;transition:background .2s, transform .2s;animation:rise .5s both;animation-delay:calc(var(--i,0)*35ms)}
 .item:hover{background:rgba(255,255,255,.06);transform:translateX(3px)}
 .item .t{flex:1;min-width:0}
 .item .t b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
@@ -251,6 +271,8 @@ body.in-app #scrim{opacity:1}
         <button class="avatar" id="avatar" aria-haspopup="true" aria-expanded="false" aria-label="Conta"></button>
         <div class="menu glass" id="menu" hidden>
           <div class="who"><b id="mnome"></b><div class="small mute" id="memail"></div></div>
+          <button id="perfilBtn">Meu perfil</button>
+          <button id="ajudaBtn">Ajuda e contato</button>
           <button id="exportar">Exportar meus dados</button>
           <button id="apagar">Apagar minha conta</button>
           <button id="sair">Sair</button>
@@ -548,7 +570,7 @@ const demoDB = (() => {
   });
   const orcs = [{ id: id(), categoriaId: cat('Alimentação'), mes: mesAtual(), limite: 620 }, { id: id(), categoriaId: cat('Lazer'), mes: mesAtual(), limite: 300 }];
   const metas = [{ id: id(), nome: 'Viagem de férias', valorAlvo: 6000, valorAtual: 2200, prazo: somarMes(mesAtual(), 8) + '-15' }, { id: id(), nome: 'Reserva de emergência', valorAlvo: 15000, valorAtual: 3000, prazo: '' }];
-  return { id, cats, contas, lanc, orcs, metas, agenda: [], limites: [], alertas: [], ativos: [] };
+  return { id, cats, contas, lanc, orcs, metas, agenda: [], limites: [], alertas: [], ativos: [], msgs: [], perfil: { nome: 'Visitante', apelido: '', nascimento: '', foto: '' } };
 })();
 
 
@@ -702,6 +724,10 @@ function demo(acao, d) {
       return ok(D.lanc.filter(l => (!d.de || l.data >= d.de) && (!d.ate || l.data <= d.ate) && (!d.tipo || l.tipo === d.tipo) && (!d.contaId || l.contaId === d.contaId) && (!d.categoriaId || l.categoriaId === d.categoriaId))
         .sort((a, b) => (a.data < b.data ? -1 : 1)).map(l => ({ data: l.data, tipo: l.tipo, valor: l.valor, conta: nc(l.contaId), categoria: nk(l.categoriaId), descricao: l.descricao, tags: (l.tags || []).join(', ') })));
     }
+    case 'perfil': return ok({ email: 'demo@rumo.app', nome: D.perfil.nome, apelido: D.perfil.apelido, nascimento: D.perfil.nascimento, idade: null, foto: D.perfil.foto, plano: 'gratis', loginGoogle: true, prefs: {} });
+    case 'salvar_perfil': ['nome', 'apelido', 'nascimento', 'foto'].forEach(k => { if (d[k] !== undefined) D.perfil[k] = d[k]; }); return ok({ salvo: true });
+    case 'enviar_mensagem': if (String(d.assunto || '').trim() === '' || String(d.texto || '').trim().length < 5) return Promise.reject(new Error('Escreva o assunto e a mensagem.')); D.msgs.push({ id: D.id(), assunto: d.assunto, texto: d.texto, criado: new Date().toISOString().slice(0, 19), status: 'recebida' }); return ok({ status: 'recebida' });
+    case 'listar_mensagens': return ok(D.msgs.slice().reverse());
     case 'resumo': return ok(resumo(d.mes));
     case 'exportar_dados': return ok({ Contas: D.contas, Categorias: D.cats, Lancamentos: D.lanc, Orcamentos: D.orcs, Metas: D.metas });
     case 'apagar_conta_usuario': return ok({ apagado: true });
@@ -775,7 +801,10 @@ window.CB = { q: [], api: null, ready: false, fmt: n => brl(n), open: t => ir(t)
 
 
 /* ======================= Opções de aparência ======================= */
-const OPT_PADRAO = { fonte: 'm', pal: 'sinapse', acento: '#8B5CF6', flutuantes: true, flutQtd: 60, universo: true, uniInt: 80 };
+const OPT_PADRAO = { fonte: 'm', pal: 'sinapse', acento: '#8B5CF6', flutuantes: true, flutQtd: 60, universo: true, uniInt: 80, tema: 'escuro', dens: 'n', raio: 'p' };
+const TEMAS = { escuro: 'Escuro', claro: 'Claro', auto: 'Automático' };
+const DENS = { c: { n: 'Compacta', k: 0.8 }, n: { n: 'Normal', k: 1 }, f: { n: 'Confortável', k: 1.25 } };
+const RAIOS = { r: { n: 'Reto', v: 6 }, s: { n: 'Suave', v: 12 }, p: { n: 'Padrão', v: 20 }, a: { n: 'Arredondado', v: 28 } };
 const FONTES = { p: { n: 'Pequena', k: 0.88 }, m: { n: 'Média', k: 1 }, g: { n: 'Grande', k: 1.15 }, xg: { n: 'Extra grande', k: 1.32 } };
 const PALETAS = {
   neural: { n: 'Neural', a: '#3B82F6', b: '#22D3EE', c: '#818CF8' },
@@ -791,16 +820,24 @@ const COR = (() => {
   const contraste = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
   const mix = (a, b, t) => { const p = rgb(a), q = rgb(b); return hex(p.map((v, i) => v + (q[i] - v) * t)); };
   // clareia a cor até ela atingir o contraste mínimo sobre o fundo escuro dos painéis (e do texto escuro dos botões)
+  const escurece = (c, fundo, min) => { let x = c, i = 0; while (contraste(x, fundo) < min && i++ < 30) x = mix(x, '#000000', 0.07); return x; };
   const garante = (c, fundo, min) => { let x = c, i = 0; while (contraste(x, fundo) < min && i++ < 30) x = mix(x, '#ffffff', 0.07); return x; };
   const hsl = h => { let [r, g, b] = rgb(h).map(v => v / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; let H = 0, S = 0;
     if (mx !== mn) { const d = mx - mn; S = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn); H = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; H *= 60; } return [H, S, l]; };
   const dehsl = (H, S, L) => { H = ((H % 360) + 360) % 360; const f = n => { const k = (n + H / 30) % 12, a = S * Math.min(L, 1 - L); return L - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); }; return hex([f(0) * 255, f(8) * 255, f(4) * 255]); };
-  return { mix, contraste, garante, hsl, dehsl };
+  return { mix, contraste, garante, escurece, hsl, dehsl };
 })();
 const FUNDO_PAINEL = '#0B0618';   // cor mais escura dos painéis e do texto sobre botões
 
 function opcoesLer() { try { return Object.assign({}, OPT_PADRAO, JSON.parse(localStorage.getItem('rumo_opts') || '{}')); } catch (e) { return Object.assign({}, OPT_PADRAO); } }
-function opcoesSalvar() { try { localStorage.setItem('rumo_opts', JSON.stringify(OPT)); } catch (e) { /* sem armazenamento */ } }
+let _syncT = 0;
+function opcoesSalvar() {
+  try { localStorage.setItem('rumo_opts', JSON.stringify(OPT)); } catch (e) { /* sem armazenamento */ }
+  clearTimeout(_syncT);   // guarda também na conta (vale em outros aparelhos)
+  _syncT = setTimeout(() => { if (S && S.token && !S.demo) api('salvar_perfil', { prefs: OPT }).catch(() => {}); }, 1200);
+}
+const temaEfetivo = () => OPT.tema === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'claro' : 'escuro') : (OPT.tema === 'claro' ? 'claro' : 'escuro');
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (OPT.tema === 'auto') opcoesAplicar(); });
 const OPT = opcoesLer();
 
 function paletaAtual() {
@@ -815,9 +852,12 @@ function opcoesAplicar() {
   const r = document.documentElement.style, p = paletaAtual();
   r.setProperty('--fs', String((FONTES[OPT.fonte] || FONTES.m).k));
   // todas as cores de interface passam pela checagem de contraste (>= 4,5:1 sobre o painel escuro)
-  const a = COR.garante(p.a, FUNDO_PAINEL, 4.6), b = COR.garante(p.b, FUNDO_PAINEL, 4.6), c = COR.garante(p.c, FUNDO_PAINEL, 4.6);
+  const claro = temaEfetivo() === 'claro'; document.documentElement.dataset.tema = claro ? 'claro' : 'escuro';
+  const ajusta = x => claro ? COR.escurece(x, '#FFFFFF', 4.6) : COR.garante(x, FUNDO_PAINEL, 4.6);
+  const a = ajusta(p.a), b = ajusta(p.b), c = ajusta(p.c);
   r.setProperty('--a', a); r.setProperty('--b', b); r.setProperty('--c', c);
-  r.setProperty('--btn1', COR.garante(COR.mix(p.a, '#ffffff', .25), FUNDO_PAINEL, 6)); r.setProperty('--btn2', b);
+  r.setProperty('--btn1', COR.garante(COR.mix(p.a, '#ffffff', .25), FUNDO_PAINEL, 6)); r.setProperty('--btn2', claro ? COR.garante(p.b, FUNDO_PAINEL, 4.6) : b);
+  const rv = (RAIOS[OPT.raio] || RAIOS.p).v; r.setProperty('--r', rv + 'px'); r.setProperty('--rb', Math.round(rv * 0.65) + 'px'); r.setProperty('--dens', String((DENS[OPT.dens] || DENS.n).k));
   CB.call('setLook', { pal: { a: p.a, b: p.b, c: p.c, reg: p.reg }, uni: OPT.universo ? OPT.uniInt / 100 : 0, floatOn: OPT.flutuantes, floatQty: OPT.flutQtd / 100 });
   const fx = $('#fx'); if (fx) fx.style.opacity = OPT.universo ? String(Math.max(0.15, OPT.uniInt / 100)) : '0';
   if (typeof marcaNav === 'function') requestAnimationFrame(marcaNav);
@@ -846,22 +886,36 @@ async function vOpcoes(raiz) {
   const rg = (id, val, fn) => el('input', { id, type: 'range', min: 0, max: 100, step: 5, value: val, 'aria-label': id === 'r-flut' ? 'Quantidade de artefatos voadores' : 'Intensidade do fundo universo', oninput: e => fn(+e.target.value) });
   const rFlut = rg('r-flut', OPT.flutQtd, v => { OPT.flutQtd = v; salva(); }), rUni = rg('r-uni', OPT.uniInt, v => { OPT.uniInt = v; salva(); });
   rFlut.disabled = !OPT.flutuantes; rUni.disabled = !OPT.universo;
-  const restaurar = el('button', { class: 'btn ghost', type: 'button', onclick: () => { Object.assign(OPT, OPT_PADRAO); salva(); toast('Aparência restaurada ao padrão.', 'ok'); ir('opcoes'); } }, 'Restaurar padrão');
+  const segOpt = (chave, mapa, rot) => {
+    const g = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': rot });
+    const marca = () => g.querySelectorAll('button').forEach(x => { x.classList.toggle('on', x.dataset.k === OPT[chave]); x.setAttribute('aria-checked', String(x.dataset.k === OPT[chave])); });
+    Object.keys(mapa).forEach(k => g.append(el('button', { type: 'button', role: 'radio', 'data-k': k, onclick: () => { OPT[chave] = k; marca(); salva(); } }, typeof mapa[k] === 'string' ? mapa[k] : mapa[k].n)));
+    marca(); return g;
+  };
+  const restSec = (chaves, rot) => el('button', { class: 'btn ghost mini', type: 'button', onclick: () => { chaves.forEach(k => { OPT[k] = OPT_PADRAO[k]; }); salva(); toast('Seção "' + rot + '" restaurada.', 'ok'); ir('opcoes'); } }, 'Restaurar esta seção');
+  const secao = (t, sub, corpo, chaves) => el('section', { class: 'card glass' }, el('h3', null, t), sub ? el('p', { class: 'opt-sub' }, sub) : null, el('div', { style: 'margin-top:12px' }, corpo), el('div', { style: 'margin-top:14px' }, restSec(chaves, t)));
+  const restaurar = el('button', { class: 'btn ghost', type: 'button', onclick: () => { if (!confirm('Restaurar todas as opções de aparência ao padrão?')) return; Object.assign(OPT, OPT_PADRAO); salva(); toast('Aparência restaurada ao padrão.', 'ok'); ir('opcoes'); } }, 'Restaurar tudo ao padrão');
   raiz.append(el('div', { class: 'opts' },
+    secao('Tema', 'Claro ou escuro nas telas do app. A Jornada 3D continua escura. "Automático" segue o seu aparelho.', segOpt('tema', TEMAS, 'Tema'), ['tema']),
     el('section', { class: 'card glass' }, el('h3', null, 'Texto'),
       el('p', { class: 'opt-sub' }, 'Aumenta ou diminui todo o texto do site, na mesma proporção.'), el('div', { style: 'margin-top:12px' }, seg),
-      el('div', { class: 'fs-prev' }, el('b', null, 'Visualização'), el('p', { class: 'small mute', style: 'margin:4px 0 0' }, 'Seu dinheiro, com direção. R$ 1.234,56'))),
+      el('div', { class: 'fs-prev' }, el('b', null, 'Visualização'), el('p', { class: 'small mute', style: 'margin:4px 0 0' }, 'Seu dinheiro, com direção. R$ 1.234,56')), el('div', { style: 'margin-top:14px' }, restSec(['fonte'], 'Texto'))),
     el('section', { class: 'card glass' }, el('h3', null, 'Cores'),
       el('p', { class: 'opt-sub' }, 'Escolha uma paleta ou uma cor de destaque. Qualquer cor é ajustada automaticamente para manter a leitura (contraste mínimo 4,5:1).'),
-      el('div', { style: 'margin-top:12px' }, grade)),
+      el('div', { style: 'margin-top:12px' }, grade), el('div', { style: 'margin-top:14px' }, restSec(['pal', 'acento'], 'Cores'))),
+    el('section', { class: 'card glass' }, el('h3', null, 'Layout'),
+      el('p', { class: 'opt-sub' }, 'Densidade (espaço entre os elementos) e arredondamento dos cantos.'),
+      el('div', { style: 'margin-top:12px' }, el('span', { class: 'small mute' }, 'Densidade'), el('div', null, segOpt('dens', DENS, 'Densidade'))),
+      el('div', { style: 'margin-top:12px' }, el('span', { class: 'small mute' }, 'Cantos'), el('div', null, segOpt('raio', RAIOS, 'Arredondamento dos cantos'))),
+      el('div', { style: 'margin-top:14px' }, restSec(['dens', 'raio'], 'Layout'))),
     el('section', { class: 'card glass' }, el('h3', null, 'Efeitos'),
       sw('s-flut', 'Artefatos voadores', 'Orbes, anéis e faíscas que flutuam ao redor do cérebro.', OPT.flutuantes, v => { OPT.flutuantes = v; rFlut.disabled = !v; salva(); }),
       el('div', null, el('span', { class: 'small mute' }, 'Quantidade'), rFlut),
       sw('s-uni', 'Fundo universo', 'Estrelas, galáxias e planetas distantes, em camadas.', OPT.universo, v => { OPT.universo = v; rUni.disabled = !v; salva(); }),
       el('div', null, el('span', { class: 'small mute' }, 'Intensidade'), rUni),
-      el('div', { class: 'opts-foot' }, restaurar))));
+      el('div', { style: 'margin-top:14px' }, restSec(['flutuantes', 'flutQtd', 'universo', 'uniInt'], 'Efeitos'))),
+    el('div', { class: 'opts-foot' }, restaurar)));
 }
-
 
 /* planos: valores vêm de config.js (editável); anual = total por ano */
 function planosSecao() {
@@ -895,7 +949,7 @@ async function vJornada(raiz) {
   CB.call('enterJourney', spacer, lista);
   Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes }).catch(() => null)]).then(([r, c]) => CB.call('setData', r, c)).catch(() => { /* cartões ficam sem números */ });
 }
-const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, cartoes: vCartoes, invest: vInvest, agenda: vAgenda, limites: vLimites, cons: vCons };
+const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, perfil: vPerfil, ajuda: vAjuda, cartoes: vCartoes, invest: vInvest, agenda: vAgenda, limites: vLimites, cons: vCons };
 
 async function vPainel(raiz) {
   const [res, con] = await Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes })]);
@@ -1364,6 +1418,107 @@ async function vInvest(raiz) {
   raiz.replaceChildren(resumo, el('div', { class: 'grid g-2 stack' }, dist, lista), formBox, el('p', { class: 'small mute', role: 'note' }, '⚠ ' + c.aviso));
 }
 
+/* ======================= perfil ======================= */
+// Recorte de foto: arrastar para posicionar, controle de zoom, resultado 256×256 JPEG leve.
+function recortarFoto(arquivo) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(arquivo), img = new Image();
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não consegui abrir essa imagem.')); };
+    img.onload = () => {
+      const N = 280, cv = el('canvas', { width: N, height: N, class: 'crop-cv', 'aria-label': 'Área de recorte da foto' }), g = cv.getContext('2d');
+      const base = N / Math.min(img.width, img.height); let zoom = 1, ox = 0, oy = 0;
+      const lim = () => { const w = img.width * base * zoom, h = img.height * base * zoom; ox = Math.max(-(w - N) / 2, Math.min((w - N) / 2, ox)); oy = Math.max(-(h - N) / 2, Math.min((h - N) / 2, oy)); };
+      const desenha = (alvo, tam) => { lim(); const k = tam / N, w = img.width * base * zoom * k, h = img.height * base * zoom * k; alvo.fillStyle = '#fff'; alvo.fillRect(0, 0, tam, tam); alvo.drawImage(img, tam / 2 - w / 2 + ox * k, tam / 2 - h / 2 + oy * k, w, h); };
+      const redesenha = () => desenha(g, N);
+      let arr = null;
+      cv.addEventListener('pointerdown', e => { arr = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); });
+      cv.addEventListener('pointermove', e => { if (!arr) return; const r = cv.getBoundingClientRect(), f = N / r.width; ox += (e.clientX - arr[0]) * f; oy += (e.clientY - arr[1]) * f; arr = [e.clientX, e.clientY]; redesenha(); });
+      cv.addEventListener('pointerup', () => { arr = null; }); cv.addEventListener('pointercancel', () => { arr = null; });
+      const zm = el('input', { type: 'range', min: '1', max: '3', step: '0.02', value: '1', 'aria-label': 'Zoom da foto', oninput: e => { zoom = +e.target.value; redesenha(); } });
+      const dlg = el('dialog', { class: 'crop glass', 'aria-label': 'Recortar foto' }, el('h3', null, 'Ajuste sua foto'), el('div', { class: 'crop-box' }, cv, el('i', { class: 'crop-mask', 'aria-hidden': 'true' })),
+        el('p', { class: 'small mute', style: 'margin:8px 0' }, 'Arraste para posicionar e use o controle para aproximar.'), zm,
+        el('div', { style: 'display:flex;gap:8px;margin-top:14px;justify-content:flex-end' },
+          el('button', { class: 'btn ghost', type: 'button', onclick: () => dlg.close('cancelar') }, 'Cancelar'),
+          el('button', { class: 'btn', type: 'button', onclick: () => {
+            const o = el('canvas', { width: 256, height: 256 }), og = o.getContext('2d'); desenha(og, 256);
+            let q = 0.86, d = o.toDataURL('image/jpeg', q); while (d.length > 38000 && q > 0.3) { q -= 0.08; d = o.toDataURL('image/jpeg', q); }
+            dlg.returnValue = d; dlg.close(d);
+          } }, 'Usar foto')));
+      dlg.addEventListener('close', () => { URL.revokeObjectURL(url); const v = dlg.returnValue; dlg.remove(); resolve(v && v.startsWith('data:image/jpeg') ? v : null); });
+      document.body.append(dlg); redesenha(); dlg.showModal();
+    };
+    img.src = url;
+  });
+}
+function atualizaAvatar() {
+  const a = $('#avatar'); if (!a || !S.user) return;
+  if (S.user.foto) { a.textContent = ''; a.style.backgroundImage = 'url(' + S.user.foto + ')'; a.style.backgroundSize = 'cover'; a.style.backgroundPosition = 'center'; }
+  else { a.style.backgroundImage = ''; a.textContent = (S.user.apelido || S.user.nome || '?').trim().charAt(0).toUpperCase(); }
+  $('#mnome').textContent = S.user.apelido || S.user.nome;
+}
+async function vPerfil(raiz) {
+  const pf = await api('perfil');
+  S.user = Object.assign(S.user || {}, { nome: pf.nome, apelido: pf.apelido, foto: pf.foto }); atualizaAvatar();
+  const plano = ((window.RUMO_CONFIG || {}).PLANOS || []).find(x => x.atual) || { nome: 'Grátis' };
+  const nome = el('input', { required: true, maxlength: '80', autocomplete: 'name', value: pf.nome }), ap = el('input', { maxlength: '30', placeholder: 'Como quer ser chamado', autocomplete: 'nickname', value: pf.apelido });
+  const nasc = el('input', { type: 'date', max: hojeISO(), value: pf.nascimento, autocomplete: 'bday' });
+  const idadeTxt = el('span', { class: 'small mute' }, pf.idade != null ? pf.idade + ' anos' : '');
+  nasc.oninput = () => { if (!nasc.value) { idadeTxt.textContent = ''; return; } const [y, m, d] = nasc.value.split('-').map(Number), h = hojeISO().split('-').map(Number); idadeTxt.textContent = (h[0] - y - ((h[1] < m || (h[1] === m && h[2] < d)) ? 1 : 0)) + ' anos'; };
+  const prev = el('div', { class: 'avatar grande', 'aria-label': 'Sua foto' }); const mostra = () => { prev.style.backgroundImage = S.user.foto ? 'url(' + S.user.foto + ')' : ''; prev.textContent = S.user.foto ? '' : (S.user.apelido || S.user.nome || '?').charAt(0).toUpperCase(); };
+  mostra();
+  const arq = el('input', { type: 'file', accept: 'image/*', hidden: true, 'aria-label': 'Escolher foto', onchange: tentar(async () => {
+    const f = arq.files[0]; arq.value = ''; if (!f) return;
+    if (f.size > 8e6) throw new Error('Imagem muito grande (máximo 8 MB).');
+    const d = await recortarFoto(f); if (!d) return;
+    await api('salvar_perfil', { foto: d }); S.user.foto = d; mostra(); atualizaAvatar(); toast('Foto atualizada.', 'ok');
+  }) });
+  const salvar = el('form', { class: 'f', onsubmit: tentar(async () => {
+    await api('salvar_perfil', { nome: nome.value, apelido: ap.value, nascimento: nasc.value });
+    S.user.nome = nome.value.trim(); S.user.apelido = ap.value.trim(); atualizaAvatar(); mostra(); toast('Perfil salvo.', 'ok');
+  }) }, campo('Nome', nome), campo('Apelido', ap), el('div', { class: 'campo' }, el('span', null, 'Nascimento'), nasc, idadeTxt), campo('E-mail (da sua conta Google)', el('input', { value: pf.email, readOnly: true, 'aria-readonly': 'true' })), el('button', { class: 'btn', type: 'submit' }, 'Salvar'));
+  raiz.replaceChildren(el('div', { class: 'grid g-eq' },
+    el('div', { class: 'card glass reveal' }, el('h3', null, 'Foto'), el('div', { class: 'foto-linha' }, prev, el('div', null,
+      el('button', { class: 'btn', type: 'button', onclick: () => arq.click() }, 'Escolher foto'), ' ', pf.foto || S.user.foto ? el('button', { class: 'btn ghost', type: 'button', onclick: tentar(async () => { await api('salvar_perfil', { foto: '' }); S.user.foto = ''; mostra(); atualizaAvatar(); toast('Foto removida.'); }) }, 'Remover') : '',
+      el('p', { class: 'small mute', style: 'margin:8px 0 0' }, 'Você poderá recortar antes de salvar.')), arq)),
+    el('div', { class: 'card glass reveal' }, el('h3', null, 'Meus dados'), salvar)),
+    el('div', { class: 'grid g-eq stack' },
+      el('div', { class: 'card glass reveal' }, el('h3', null, 'Senha e segurança'), el('p', { class: 'mute' }, 'Você entra com a sua Conta Google, então o Rumo não guarda senha. Para trocar a senha, a Conta Google pede a senha atual por conta própria.'),
+        el('a', { class: 'btn ghost', href: 'https://myaccount.google.com/security', target: '_blank', rel: 'noopener noreferrer' }, 'Abrir segurança da Conta Google')),
+      el('div', { class: 'card glass reveal' }, el('h3', null, 'Meu plano'), el('div', { class: 'stat' }, plano.nome), el('p', { class: 'small mute' }, 'Plano atual. A cobrança ainda não está ativa.'),
+        el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, el('button', { class: 'btn ghost', type: 'button', onclick: () => ir('jornada').then(() => setTimeout(() => scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 400)) }, 'Ver planos'), el('button', { class: 'btn danger', type: 'button', onclick: () => $('#sair').click() }, 'Sair')))));
+}
+
+/* ======================= ajuda e contato ======================= */
+async function vAjuda(raiz) {
+  const cfg = window.RUMO_CONFIG || {}, faq = cfg.FAQ || [], ct = cfg.CONTATO || {};
+  const busca = el('input', { type: 'search', placeholder: 'Busque sua dúvida (ex.: cartão, excel, senha)', 'aria-label': 'Buscar nas perguntas frequentes', autocomplete: 'off' });
+  const lista = el('div', { class: 'faq' }), cont = el('p', { class: 'small mute', role: 'status' });
+  const desenha = () => {
+    const q = semAcento(busca.value).trim().split(/\s+/).filter(Boolean);
+    const achados = faq.filter(f => q.every(w => semAcento(f.p + ' ' + f.r).includes(w)));
+    cont.textContent = q.length ? achados.length + ' resultado(s)' : faq.length + ' perguntas';
+    lista.replaceChildren(...(achados.length ? achados.map(f => el('details', { open: q.length > 0 && achados.length <= 3 }, el('summary', null, f.p), el('p', null, f.r))) : [el('div', { class: 'vazio' }, 'Nada encontrado. Fale com a gente logo abaixo.')]));
+  };
+  busca.oninput = desenha; desenha();
+  const msgIntro = 'Olá! Preciso de ajuda com o Rumo. Meu e-mail: ' + (S.user ? S.user.email : '') + '.';
+  const wa = ct.whatsapp ? 'https://wa.me/' + String(ct.whatsapp).replace(/\D/g, '') + '?text=' + encodeURIComponent(msgIntro) : '';
+  const mail = ct.email ? 'mailto:' + ct.email + '?subject=' + encodeURIComponent('Ajuda com o Rumo') + '&body=' + encodeURIComponent(msgIntro + '\n\nDescreva sua dúvida aqui:\n') : '';
+  const ass = el('input', { required: true, maxlength: '80', placeholder: 'Assunto', autocomplete: 'off' }), tx = el('textarea', { required: true, rows: 5, maxlength: '1500', placeholder: 'Conte o que aconteceu', 'aria-label': 'Mensagem' });
+  const minhas = el('div', { class: 'lista' });
+  const carrega = () => api('listar_mensagens').then(ms => minhas.replaceChildren(...(ms.length ? ms.map(m => el('div', { class: 'item' }, el('div', { class: 't' }, el('b', null, m.assunto), el('span', { class: 'small mute' }, m.criado.slice(8, 10) + '/' + m.criado.slice(5, 7) + ' · ' + (m.status === 'recebida' ? 'Recebida' : m.status)))) ) : [el('div', { class: 'vazio' }, 'Nenhuma mensagem enviada.')]))).catch(() => {});
+  carrega();
+  raiz.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, 'Perguntas frequentes'), busca, cont, lista),
+    el('div', { class: 'grid g-eq stack' },
+      el('div', { class: 'card glass reveal' }, el('h3', null, 'Não achou? Fale com a gente'),
+        el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' },
+          wa ? el('a', { class: 'btn', href: wa, target: '_blank', rel: 'noopener noreferrer' }, 'WhatsApp') : '', mail ? el('a', { class: 'btn ghost', href: mail }, 'E-mail') : ''),
+        ct.exemplo ? el('p', { class: 'small aviso-ex' }, 'Contatos de exemplo: troque o número e o e-mail em config.js.') : '',
+        el('h4', { style: 'margin:18px 0 8px' }, 'Mensagem pelo app'),
+        el('form', { class: 'f', onsubmit: tentar(async () => { await api('enviar_mensagem', { assunto: ass.value, texto: tx.value }); ass.value = ''; tx.value = ''; toast('Mensagem enviada. Obrigado!', 'ok'); carrega(); }) },
+          campo('Assunto', ass), el('div', { style: 'grid-column:1/-1' }, campo('Mensagem', tx)), el('button', { class: 'btn', type: 'submit' }, 'Enviar'))),
+      el('div', { class: 'card glass reveal' }, el('h3', null, 'Minhas mensagens'), minhas)));
+}
+
 async function vCons(raiz) {
   const orb = el('div', { class: 'orb thinking', role: 'img', 'aria-label': 'Consultor analisando' });
   const saida = el('div', { class: 'lista', style: 'gap:10px;margin-top:8px' });
@@ -1431,8 +1586,13 @@ async function entrar(token, emDemo) {
     guarda('rumo_tk', emDemo ? null : token);
     await carregarBase();
     $('#login').hidden = true; $('#shell').hidden = false;
-    $('#avatar').textContent = (S.user.nome || '?').trim().charAt(0).toUpperCase();
-    $('#mnome').textContent = S.user.nome; $('#memail').textContent = S.user.email;
+    $('#memail').textContent = S.user.email;
+    try {   // foto, apelido e preferências guardadas na conta
+      const pf = await api('perfil');
+      Object.assign(S.user, { nome: pf.nome || S.user.nome, apelido: pf.apelido, foto: pf.foto });
+      if (pf.prefs && Object.keys(pf.prefs).length) { Object.assign(OPT, pf.prefs); try { localStorage.setItem('rumo_opts', JSON.stringify(OPT)); } catch (e) { /* ok */ } opcoesAplicar(); }
+    } catch (e) { /* segue sem perfil */ }
+    atualizaAvatar();
     S.mes = mesAtual(); rotuloMes();
     if (emDemo) toast('Modo demonstração: os dados são fictícios e somem ao recarregar.');
     await ir('jornada');
@@ -1468,6 +1628,8 @@ $('#avatar').onclick = () => { const m = $('#menu'); m.hidden = !m.hidden; $('#a
 document.addEventListener('click', e => { if (!e.target.closest('.user')) $('#menu').hidden = true; });
 $('#sair').onclick = sair;
 $('#demo').onclick = () => entrar('', true);
+$('#perfilBtn').onclick = () => { $('#menu').hidden = true; $('#avatar').setAttribute('aria-expanded', 'false'); ir('perfil'); };
+$('#ajudaBtn').onclick = () => { $('#menu').hidden = true; $('#avatar').setAttribute('aria-expanded', 'false'); ir('ajuda'); };
 $('#exportar').onclick = tentar(async () => {
   const d = await api('exportar_dados');
   const a = el('a', { href: URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' })), download: 'meus-dados-rumo.json' });

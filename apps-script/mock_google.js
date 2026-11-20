@@ -54,9 +54,13 @@ function novoContexto() {
     SpreadsheetApp: { getActiveSpreadsheet: () => planilha },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     CacheService: { getScriptCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; }, remove: k => { delete cache[k]; } }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === 'CLIENT_ID' ? CLIENT_ID : null) }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === 'CLIENT_ID' ? CLIENT_ID : (ctx.props || {})[k] || null) }) },
     UrlFetchApp: {
-      fetch(url) {
+      fetch(url, op) {
+        if (/awesomeapi/.test(url)) {   // cotações: o teste define ctx.awesome(url, op) -> {codigo, corpo} (ou lança erro)
+          if (!ctx.awesome) return { getResponseCode: () => 500, getContentText: () => '' };
+          const r = ctx.awesome(url, op || {}); return { getResponseCode: () => r.codigo, getContentText: () => JSON.stringify(r.corpo) };
+        }
         const t = decodeURIComponent(url.split('id_token=')[1]);
         const info = tokens[t];
         return { getResponseCode: () => (info ? 200 : 400), getContentText: () => JSON.stringify(info || { error: 'invalid' }) };

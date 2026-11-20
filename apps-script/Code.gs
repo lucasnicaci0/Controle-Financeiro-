@@ -1,6 +1,6 @@
 /**
  * FINANÇAS DB — back-end em Google Apps Script + Google Planilhas
- * Versão 1.3.0
+ * Versão 1.5.0
  *
  * COMO USAR (resumo):
  *  1. Cole este arquivo em Extensões → Apps Script (script vinculado à planilha "Financas DB").
@@ -20,7 +20,7 @@
  * o que facilita trocar a planilha por outro banco no futuro.
  */
 
-var VERSAO = '1.3.0';
+var VERSAO = '1.5.0';
 
 var CONFIG = {
   CLIENT_ID: 'COLE_AQUI_O_ID_DO_CLIENTE_OAUTH',
@@ -35,10 +35,10 @@ var AVISO = 'Orientação educativa de planejamento financeiro. Não é recomend
 /* ======================= TABELAS (uma aba cada) ======================= */
 
 var TABELAS = {
-  Usuarios:    ['Email', 'Nome', 'Criado', 'UltimoAcesso'],
+  Usuarios:    ['Email', 'Nome', 'Criado', 'UltimoAcesso', 'Apelido', 'Nascimento', 'Prefs', 'CambioFav'],
   Contas:      ['Id', 'Email', 'Nome', 'Tipo', 'SaldoInicial', 'Criado', 'Limite', 'DiaFechamento', 'DiaVencimento', 'Marca'],
   Categorias:  ['Id', 'Email', 'Nome', 'Tipo', 'Cor', 'Icone', 'Arquivada'],
-  Lancamentos: ['Id', 'Email', 'Data', 'Tipo', 'Valor', 'ContaId', 'CategoriaId', 'Descricao', 'Chave', 'Criado', 'Tags'],
+  Lancamentos: ['Id', 'Email', 'Data', 'Tipo', 'Valor', 'ContaId', 'CategoriaId', 'Descricao', 'Chave', 'Criado', 'Tags', 'MoedaOrig', 'ValorOrig', 'Cotacao'],
   Orcamentos:  ['Id', 'Email', 'CategoriaId', 'Mes', 'Limite'],
   Metas:       ['Id', 'Email', 'Nome', 'ValorAlvo', 'ValorAtual', 'Prazo', 'Criado', 'Tipo', 'Aporte'],
   // Reservada para a conversa com IA (fase 2). O motor de regras não grava aqui.
@@ -49,11 +49,16 @@ var TABELAS = {
   Alertas:     ['Id', 'Email', 'Mes', 'LimiteId', 'Nivel', 'Gasto', 'Limite', 'Criado', 'Mensagem', 'Enviado'],
   Feeds:       ['Email', 'Token', 'Criado'],
   // Fase 3
-  Ativos:      ['Id', 'Email', 'Nome', 'Ticker', 'Classe', 'Quantidade', 'PrecoMedio', 'PrecoAtual', 'AtualizadoEm', 'Fonte', 'Criado']
+  Ativos:      ['Id', 'Email', 'Nome', 'Ticker', 'Classe', 'Quantidade', 'PrecoMedio', 'PrecoAtual', 'AtualizadoEm', 'Fonte', 'Criado'],
+  // Fase 4 (foto fica à parte para não pesar em toda requisição)
+  Fotos:       ['Email', 'Foto', 'Atualizado'],
+  Mensagens:   ['Id', 'Email', 'Assunto', 'Texto', 'Criado', 'Status'],
+  // Câmbio
+  CambioAlertas: ['Id', 'Email', 'Moeda', 'Direcao', 'Valor', 'Ativo', 'Criado']
 };
 
 // Colunas formatadas como texto: impedem que a planilha converta datas ou interprete fórmulas.
-var COLUNAS_TEXTO = ['Data', 'Mes', 'Prazo', 'Criado', 'UltimoAcesso', 'Nome', 'Descricao', 'Chave', 'Papel', 'Texto', 'Tags', 'Icone', 'Arquivada', 'Titulo', 'Fim', 'Concluidos', 'Token', 'Mensagem', 'Enviado', 'Escopo', 'AlvoId', 'Marca', 'Ticker', 'Classe', 'AtualizadoEm', 'Fonte'];
+var COLUNAS_TEXTO = ['Data', 'Mes', 'Prazo', 'Criado', 'UltimoAcesso', 'Nome', 'Descricao', 'Chave', 'Papel', 'Texto', 'Tags', 'Icone', 'Arquivada', 'Titulo', 'Fim', 'Concluidos', 'Token', 'Mensagem', 'Enviado', 'Escopo', 'AlvoId', 'Marca', 'Ticker', 'Classe', 'AtualizadoEm', 'Fonte', 'Apelido', 'Nascimento', 'Prefs', 'Foto', 'Atualizado', 'Assunto', 'Status', 'CambioFav', 'MoedaOrig', 'Moeda', 'Direcao', 'Ativo'];
 
 var TIPOS_CONTA = ['corrente', 'poupanca', 'reserva', 'investimento', 'dinheiro', 'cartao'];
 
@@ -134,7 +139,7 @@ function erro_(codigo, msg) {
 
 var LEITURAS = {
   listar_contas: 1, listar_categorias: 1, listar_lancamentos: 1, listar_orcamentos: 1,
-  listar_metas: 1, listar_tags: 1, listar_cartoes: 1, listar_investimentos: 1, listar_agenda: 1, listar_limites: 1, listar_alertas: 1, exportar_lancamentos: 1, resumo: 1, consultor: 1, exportar_dados: 1
+  listar_metas: 1, listar_tags: 1, perfil: 1, listar_mensagens: 1, cambio_cotacoes: 1, cambio_historico: 1, cambio_taxa: 1, cambio_favoritos: 1, cambio_alertas: 1, listar_cartoes: 1, listar_investimentos: 1, listar_agenda: 1, listar_limites: 1, listar_alertas: 1, exportar_lancamentos: 1, resumo: 1, consultor: 1, exportar_dados: 1
 };
 
 function rotear_(corpo) {
@@ -257,6 +262,11 @@ function diasNoMes_(mes) {
   return new Date(Date.UTC(p[0], p[1], 0)).getUTCDate();
 }
 
+function idade_(nasc, hoje) {
+  var a = Number(hoje.slice(0, 4)) - Number(nasc.slice(0, 4));
+  if (hoje.slice(5) < nasc.slice(5)) a--;
+  return a;
+}
 function diasEntre_(a, b) { return Math.round((Date.parse(b) - Date.parse(a)) / 864e5); }
 
 /* ======================= ACESSO A DADOS (camada isolada) ======================= */
@@ -390,7 +400,7 @@ function sCategoria_(c) { return { id: c.Id, nome: c.Nome, tipo: c.Tipo, cor: c.
 function tagsDe_(t) { return String(t || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
 function sConta_(c, saldo) { return { id: c.Id, nome: c.Nome, tipo: c.Tipo, saldoInicial: Number(c.SaldoInicial) || 0, saldo: saldo, limite: Number(c.Limite) || 0, diaFechamento: Number(c.DiaFechamento) || 0, diaVencimento: Number(c.DiaVencimento) || 0, marca: c.Marca || '' }; }
 function sLanc_(l) {
-  return { id: l.Id, data: String(l.Data), tipo: l.Tipo, valor: Number(l.Valor), contaId: l.ContaId, categoriaId: l.CategoriaId, descricao: l.Descricao, tags: tagsDe_(l.Tags) };
+  return { id: l.Id, data: String(l.Data), tipo: l.Tipo, valor: Number(l.Valor), contaId: l.ContaId, categoriaId: l.CategoriaId, descricao: l.Descricao, tags: tagsDe_(l.Tags), moeda: l.MoedaOrig || '', valorOrig: Number(l.ValorOrig) || 0, cotacao: Number(l.Cotacao) || 0 };
 }
 function sOrc_(o) { return { id: o.Id, categoriaId: o.CategoriaId, mes: String(o.Mes), limite: Number(o.Limite) }; }
 function sMeta_(m) {
@@ -455,7 +465,14 @@ function validarLanc_(email, d) {
     if (String(cat.Arquivada) === 'sim') throw erro_('categoria_arquivada', 'Essa categoria está arquivada. Desarquive ou escolha outra.');
     if (cat.Tipo !== tipo) throw erro_('categoria_invalida', 'A categoria não é de ' + tipo + '.');
   }
-  return { Data: data, Tipo: tipo, Valor: valor, ContaId: contaId, CategoriaId: catId, Descricao: seguro_(d.descricao, 200), Tags: normalizaTags_(d.tags) };
+  var r = { Data: data, Tipo: tipo, Valor: valor, ContaId: contaId, CategoriaId: catId, Descricao: seguro_(d.descricao, 200), Tags: normalizaTags_(d.tags), MoedaOrig: '', ValorOrig: '', Cotacao: '' };
+  if (d.moeda) {   // lançamento em moeda estrangeira: guarda valor original e a taxa usada; Valor já é o total em R$
+    var vo = d.valorOrig === undefined || d.valorOrig === '' ? 0 : num_(d.valorOrig), ct = d.cotacao === undefined || d.cotacao === '' ? 0 : num_(d.cotacao);
+    if (!(vo > 0) || !(ct > 0)) throw erro_('cambio_invalido', 'Informe o valor na moeda e a cotação usada.');
+    if (Math.abs(Math.round(vo * ct * 100) / 100 - valor) > 0.02) throw erro_('cambio_invalido', 'O valor em R$ não confere com valor × cotação.');
+    r.MoedaOrig = codigoMoeda_(d.moeda); r.ValorOrig = vo; r.Cotacao = ct;
+  }
+  return r;
 }
 
 /* ======================= AÇÕES ======================= */
@@ -473,6 +490,84 @@ var ACOES = {
     }
     return { email: u.email, nome: u.nome, novo: !existe, aviso: AVISO };
   },
+
+  /* ---- perfil e preferências (Fase 4) ---- */
+  perfil: function (u) {
+    var r = doUsuario_('Usuarios', u.email)[0], f = doUsuario_('Fotos', u.email)[0];
+    var nasc = String(r.Nascimento || ''), idade = nasc ? idade_(nasc, hoje_()) : null;
+    var prefs = {}; try { prefs = JSON.parse(r.Prefs || '{}') || {}; } catch (e) { prefs = {}; }
+    return { email: u.email, nome: r.Nome, apelido: r.Apelido || '', nascimento: nasc, idade: idade, foto: f ? f.Foto : '', plano: 'gratis', loginGoogle: true, prefs: prefs };
+  },
+  salvar_perfil: function (u, d) {
+    var r = doUsuario_('Usuarios', u.email)[0], campos = {};
+    if (d.nome !== undefined) { var n = seguro_(d.nome, 80); if (!n) throw erro_('nome_invalido', 'Informe seu nome.'); campos.Nome = n; }
+    if (d.apelido !== undefined) campos.Apelido = seguro_(d.apelido, 30);
+    if (d.nascimento !== undefined) {
+      var nc = String(d.nascimento || '');
+      if (nc) {
+        if (!dataOk_(nc) || nc > hoje_() || idade_(nc, hoje_()) > 120) throw erro_('data_invalida', 'Data de nascimento inválida.');
+      }
+      campos.Nascimento = nc;
+    }
+    if (d.prefs !== undefined) {
+      var js = JSON.stringify(d.prefs && typeof d.prefs === 'object' ? d.prefs : {});
+      if (js.length > 4000) throw erro_('muito_grande', 'Preferências grandes demais.');
+      campos.Prefs = js;
+    }
+    if (Object.keys(campos).length) atualizar_('Usuarios', r._linha, Object.assign({}, r, campos));
+    if (d.foto !== undefined) {
+      var foto = String(d.foto || ''), f = doUsuario_('Fotos', u.email)[0];
+      if (foto && (!/^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(foto) || foto.length > 40000)) throw erro_('foto_invalida', 'Foto inválida ou grande demais.');
+      if (f) atualizar_('Fotos', f._linha, Object.assign({}, f, { Foto: foto, Atualizado: agora_() })); else if (foto) acrescentar_('Fotos', [{ Email: u.email, Foto: foto, Atualizado: agora_() }]);
+    }
+    return { salvo: true };
+  },
+
+  /* ---- fale conosco ---- */
+  enviar_mensagem: function (u, d) {
+    var assunto = seguro_(d.assunto, 80), texto = seguro_(d.texto, 1500);
+    if (!assunto || texto.length < 5) throw erro_('mensagem_invalida', 'Escreva o assunto e a mensagem.');
+    var hojeIni = hoje_(), minhas = doUsuario_('Mensagens', u.email);
+    if (minhas.filter(function (m) { return String(m.Criado).slice(0, 10) === hojeIni; }).length >= 5) throw erro_('limite_diario', 'Você já enviou 5 mensagens hoje. Tente amanhã.');
+    var m = { Id: Utilities.getUuid(), Email: u.email, Assunto: assunto, Texto: texto, Criado: agora_(), Status: 'recebida' };
+    acrescentar_('Mensagens', [m]);
+    return { id: m.Id, status: m.Status };
+  },
+  listar_mensagens: function (u) {
+    return doUsuario_('Mensagens', u.email).map(function (m) { return { id: m.Id, assunto: m.Assunto, texto: m.Texto, criado: m.Criado, status: m.Status }; }).reverse().slice(0, 30);
+  },
+
+  /* ---- câmbio (Fase câmbio) ---- */
+  cambio_cotacoes: function (u, d) { return cambioCotacoes_(listaMoedas_((d.moedas || []).join ? d.moedas.join(',') : d.moedas)); },
+  cambio_historico: function (u, d) {
+    var dias = [7, 30, 180, 365].indexOf(Number(d.dias)) >= 0 ? Number(d.dias) : 30;
+    return cambioHistorico_(codigoMoeda_(d.moeda), dias);
+  },
+  cambio_taxa: function (u, d) {
+    var data = dataOk_(d.data) ? d.data : hoje_();
+    return cambioTaxa_(codigoMoeda_(d.moeda), data, d.tipo === 'receita' ? 'receita' : 'despesa');
+  },
+  cambio_favoritos: function (u) {
+    var r = doUsuario_('Usuarios', u.email)[0], l = listaMoedas_(r.CambioFav);
+    return { moedas: r.CambioFav === '' || r.CambioFav === undefined ? CAMBIO_PADRAO : l, padrao: !r.CambioFav };
+  },
+  cambio_favoritar: function (u, d) {
+    var l = listaMoedas_((d.moedas || []).join ? d.moedas.join(',') : d.moedas), r = doUsuario_('Usuarios', u.email)[0];
+    atualizar_('Usuarios', r._linha, Object.assign({}, r, { CambioFav: l.length ? l.join(',') : 'NENHUMA' }));
+    return { moedas: l };
+  },
+  cambio_alertas: function (u) {
+    return doUsuario_('CambioAlertas', u.email).map(function (a) { return { id: a.Id, moeda: a.Moeda, direcao: a.Direcao, valor: Number(a.Valor), ativo: a.Ativo === 'sim' }; });
+  },
+  cambio_alerta_salvar: function (u, d) {
+    var moeda = codigoMoeda_(d.moeda), valor = num_(d.valor), dir = d.direcao === 'abaixo' ? 'abaixo' : 'acima';
+    if (!(valor > 0)) throw erro_('valor_invalido', 'Informe o valor da cotação.');
+    if (!String(d.id || '') && doUsuario_('CambioAlertas', u.email).length >= 30) throw erro_('limite', 'Limite de alertas de cotação atingido.');
+    var r = upsert_('CambioAlertas', u.email, String(d.id || ''), { Moeda: moeda, Direcao: dir, Valor: valor, Ativo: d.ativo === false ? '' : 'sim' });
+    return { id: r.Id };
+  },
+  cambio_alerta_excluir: function (u, d) { return excluirPorId_('CambioAlertas', u.email, d.id); },
+  cambio_verificar_alertas: function (u) { return { alertas: verificarAlertasCambio_(u.email) }; },
 
   /* ---- contas ---- */
   listar_contas: function (u) {
@@ -697,7 +792,7 @@ var ACOES = {
       return dt >= de && dt <= ate && (!d.tipo || l.Tipo === d.tipo) && (!d.contaId || l.ContaId === d.contaId) && (!d.categoriaId || l.CategoriaId === d.categoriaId) &&
         (!tag || tagsDe_(l.Tags).some(function (t) { return norm_(t) === tag; }));
     }).sort(function (a, b) { return String(a.Data) < String(b.Data) ? -1 : 1; }).slice(0, 20000).map(function (l) {
-      return { data: String(l.Data), tipo: l.Tipo, valor: Number(l.Valor), conta: contas[l.ContaId] || '', categoria: cats[l.CategoriaId] || 'Sem categoria', descricao: l.Descricao, tags: tagsDe_(l.Tags).join(', ') };
+      return { data: String(l.Data), tipo: l.Tipo, valor: Number(l.Valor), conta: contas[l.ContaId] || '', categoria: cats[l.CategoriaId] || 'Sem categoria', descricao: l.Descricao, tags: tagsDe_(l.Tags).join(', '), moeda: l.MoedaOrig || '', valorOrig: Number(l.ValorOrig) || 0, cotacao: Number(l.Cotacao) || 0 };
     });
   },
 
@@ -992,6 +1087,114 @@ function resumoCarteira_(email) {
   return { ativos: ativos, investido: inv, valorAtual: atual, retorno: Math.round((atual - inv) * 100) / 100, retornoPct: inv > 0 ? Math.round((atual - inv) / inv * 10000) / 100 : 0,
     porClasse: Object.keys(cls).map(function (k) { return { classe: k, nome: CLASSES_INV[k], valor: Math.round(cls[k] * 100) / 100, pct: atual > 0 ? Math.round(cls[k] / atual * 1000) / 10 : 0 }; }).sort(function (a, b) { return b.valor - a.valor; }),
     cotacoesAutomaticas: false, aviso: AVISO_INV };
+}
+
+/* ======================= CÂMBIO (AwesomeAPI, via servidor) ======================= */
+
+var CAMBIO_BASE = 'https://economia.awesomeapi.com.br/json/';
+var CAMBIO_FONTE = 'AwesomeAPI (economia.awesomeapi.com.br)';
+var CAMBIO_AVISO = 'Valores de referência, podem diferir da cotação praticada por bancos e corretoras.';
+var CAMBIO_PADRAO = ['USD', 'EUR', 'GBP', 'ARS', 'BTC'];
+var CAMBIO_TTL = 300;   // segundos: cotação em cache por 5 minutos
+
+function codigoMoeda_(c) {
+  c = String(c || '').toUpperCase();
+  if (!/^[A-Z]{3,5}$/.test(c) || c === 'BRL') throw erro_('moeda_invalida', 'Moeda inválida.');
+  return c;
+}
+
+function cambioGet_(caminho) {
+  // A chave (opcional) fica nas Propriedades do script e vai em cabeçalho: nunca chega ao navegador.
+  var k = PropertiesService.getScriptProperties().getProperty('AWESOMEAPI_KEY'), op = { muteHttpExceptions: true };
+  if (k) op.headers = { 'x-api-key': k };
+  try {
+    var r = UrlFetchApp.fetch(CAMBIO_BASE + caminho, op);
+    if (r.getResponseCode() !== 200) return null;
+    return JSON.parse(r.getContentText());
+  } catch (e) { console.error(e); return null; }
+}
+
+function cacheGet_(k) { try { var v = CacheService.getScriptCache().get(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+function cachePut_(k, v, ttl) { try { CacheService.getScriptCache().put(k, JSON.stringify(v), ttl); } catch (e) { /* cache cheio: segue */ } }
+
+function dataDeTs_(ts) { return Utilities.formatDate(new Date(Number(ts) * 1000), CONFIG.FUSO, 'yyyy-MM-dd'); }
+
+function quote_(c, q) {
+  return { codigo: c, nome: String(q.name || c).split('/')[0], compra: Number(q.bid), venda: Number(q.ask), max: Number(q.high), min: Number(q.low), variacao: Number(q.varBid), pct: Number(q.pctChange),
+    atualizado: Utilities.formatDate(new Date(Number(q.timestamp) * 1000), CONFIG.FUSO, "yyyy-MM-dd'T'HH:mm:ss"), desatualizado: false };
+}
+
+// { cotacoes: {USD:{...}}, falhas: ['XXX'] }. Usa cache de 5 min; se a API cair, devolve a última cotação guardada marcada como desatualizada.
+function cambioCotacoes_(codes) {
+  var out = {}, falta = [], falhas = [];
+  codes.forEach(function (c) { var h = cacheGet_('cambio:q:' + c); if (h) out[c] = h; else falta.push(c); });
+  if (falta.length) {
+    var j = cambioGet_('last/' + falta.map(function (c) { return c + '-BRL'; }).join(','));
+    falta.forEach(function (c) {
+      var q = j && j[c + 'BRL'];
+      if (q && Number(q.bid) > 0) { var o = quote_(c, q); out[c] = o; cachePut_('cambio:q:' + c, o, CAMBIO_TTL); cachePut_('cambio:u:' + c, o, 21600); }
+      else {
+        var velho = cacheGet_('cambio:u:' + c);
+        if (velho) { velho.desatualizado = true; out[c] = velho; } else falhas.push(c);
+      }
+    });
+  }
+  return { cotacoes: out, falhas: falhas, fonte: CAMBIO_FONTE, aviso: CAMBIO_AVISO };
+}
+
+function cambioHistorico_(c, dias) {
+  var k = 'cambio:h:' + c + ':' + dias, h = cacheGet_(k);
+  if (h) return h;
+  var j = cambioGet_('daily/' + c + '-BRL/' + dias), serie = [];
+  if (j && j.length) {
+    var vistos = {};
+    j.forEach(function (x) { var d = dataDeTs_(x.timestamp), v = Number(x.bid); if (!vistos[d] && v > 0) { vistos[d] = 1; serie.push({ data: d, valor: v }); } });
+    serie.reverse();
+    var res = { moeda: c, dias: dias, serie: serie, desatualizado: false };
+    cachePut_(k, res, 1800); cachePut_('cambio:hu:' + c + ':' + dias, res, 21600);
+    return res;
+  }
+  var velho = cacheGet_('cambio:hu:' + c + ':' + dias);
+  if (velho) { velho.desatualizado = true; return velho; }
+  throw erro_('cambio_indisponivel', 'Não consegui obter o histórico agora.');
+}
+
+// Taxa para converter um lançamento em moeda estrangeira: despesa usa venda; receita usa compra.
+function cambioTaxa_(c, data, tipo) {
+  if (data >= hoje_()) {
+    var r = cambioCotacoes_([c]).cotacoes[c];
+    if (!r) throw erro_('cambio_indisponivel', 'Cotação indisponível agora. Informe a taxa manualmente.');
+    return { moeda: c, data: hoje_(), taxa: tipo === 'despesa' && r.venda > 0 ? r.venda : r.compra, base: tipo === 'despesa' ? 'venda' : 'compra', desatualizada: r.desatualizado, fonte: CAMBIO_FONTE };
+  }
+  var ini = icsData_(somarDias_(data, -5)), fim = icsData_(data);
+  var j = cambioGet_('daily/' + c + '-BRL/10?start_date=' + ini + '&end_date=' + fim);
+  var alvo = (j || []).filter(function (x) { return dataDeTs_(x.timestamp) <= data && Number(x.bid) > 0; })[0];
+  if (!alvo) throw erro_('cambio_indisponivel', 'Sem cotação para essa data. Informe a taxa manualmente.');
+  return { moeda: c, data: dataDeTs_(alvo.timestamp), taxa: Number(alvo.bid), base: 'fechamento do dia', desatualizada: false, fonte: CAMBIO_FONTE };
+}
+
+function listaMoedas_(txt) {
+  var l = String(txt || '').split(',').map(function (x) { return x.trim().toUpperCase(); }).filter(function (x) { return /^[A-Z]{3,5}$/.test(x) && x !== 'BRL'; });
+  return l.filter(function (x, i) { return l.indexOf(x) === i; }).slice(0, 12);
+}
+
+// Alertas de cotação: usam a mesma tabela de histórico (Alertas) dos limites de gastos, com nível "cambio".
+function verificarAlertasCambio_(email) {
+  var ativos = doUsuario_('CambioAlertas', email).filter(function (a) { return a.Ativo === 'sim'; });
+  if (!ativos.length) return [];
+  var cot = cambioCotacoes_(ativos.map(function (a) { return a.Moeda; }).filter(function (x, i, v) { return v.indexOf(x) === i; })).cotacoes, novos = [];
+  ativos.forEach(function (a) {
+    var q = cot[a.Moeda]; if (!q || q.desatualizado) return;
+    var alvo = Number(a.Valor), dispara = a.Direcao === 'acima' ? q.compra >= alvo : q.compra <= alvo;
+    if (!dispara) return;
+    var msg = 'Cotação: ' + a.Moeda + ' ' + (a.Direcao === 'acima' ? 'subiu até' : 'caiu até') + ' ' + brl_(alvo) + ' (agora ' + brl_(q.compra) + ').';
+    var al = { Id: Utilities.getUuid(), Email: email, Mes: hoje_().slice(0, 7), LimiteId: a.Id, Nivel: 'cambio', Gasto: q.compra, Limite: alvo, Criado: agora_(), Mensagem: msg, Enviado: '' };
+    al.Enviado = notificar_(email, al);
+    acrescentar_('Alertas', [al]);
+    atualizar_('CambioAlertas', a._linha, Object.assign({}, a, { Ativo: '' }));   // dispara uma vez; o usuário pode reativar
+    novos.push(sAlerta_(al));
+  });
+  return novos;
 }
 
 /* ======================= RESUMO DO PAINEL ======================= */

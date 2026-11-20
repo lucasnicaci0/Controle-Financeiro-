@@ -77,3 +77,10 @@ O canvas respeita o `devicePixelRatio` (limite 1,5x / 2x / 3x conforme a GPU), o
 - **Metas:** mantidas; nova opção *Meta de investimento* com aporte mensal, previsão de conclusão pelo aporte e quanto aportar por mês para chegar no prazo.
 - **Investimentos** (aba nova): carteira com ações, FIIs, renda fixa, cripto e outros; quantidade, preço médio, valor atual, retorno (R$ e %) e distribuição por classe. Entrada manual. Para cotação automática já existe o ponto de extensão `buscarCotacoes_` no `Code.gs` e o botão "Atualizar cotações" (hoje informa que não está ligada). Aviso fixo: "Informação para acompanhamento, não é recomendação de investimento."
 - Testes: `teste_gs4.js` e `teste_fase3_ui.js`.
+
+## Fase 4 — Perfil, Configurações e Fale conosco (v1.4.0)
+
+- **Perfil** (menu da foto ▸ *Meu perfil*): nome, apelido, data de nascimento (mostra a idade), foto com **recorte** (arrastar e zoom; salva JPEG 256×256 leve), plano atual e *Sair*. **Senha:** o Rumo só usa login do Google, então não existe senha do app nem "senha atual" para pedir; a tela leva à segurança da Conta Google. A foto fica numa aba à parte (`Fotos`) para não pesar nas outras chamadas.
+- **Configurações** (aba *Opções*): tema **Claro / Escuro / Automático** (claro vale nas telas internas; a Jornada 3D continua escura), tamanho do texto, paletas + cor personalizada (com garantia de contraste também no tema claro), **densidade** (compacta/normal/confortável), **cantos** (reto a arredondado) e efeitos. Tudo aplica em tempo real, fica salvo no aparelho e na conta (vale em outros aparelhos). *Restaurar esta seção* em cada bloco e *Restaurar tudo ao padrão* no fim.
+- **Ajuda e contato** (menu da foto): FAQ com busca (ignora acento) antes do contato; botões WhatsApp (`wa.me` com mensagem pronta) e e-mail (`mailto`); mensagem pelo app, salva na aba `Mensagens` (limite de 5 por dia). **Perguntas, número e e-mail ficam em `config.js`** (hoje são exemplos).
+- Testes: `teste_gs5.js` e `teste_fase4_ui.js`.
