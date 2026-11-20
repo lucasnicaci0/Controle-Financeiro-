@@ -42,9 +42,9 @@ export class Camera {
   startWarp() { this.warpT = 0; }
 
   /** Voo até uma pose (clique numa região, "Visão geral"). Retorna a duração. */
-  flyTo(key) {
+  flyTo(key, mul) {
     const to = POSES[key]; if (!to) return 0;
-    this.fly = { from: copy(this.cur), to: copy(to), t: 0, dur: C.flyDuration / C.speed };
+    this.fly = { from: copy(this.cur), to: copy(to), t: 0, dur: C.flyDuration / C.speed * (mul || 1) };
     this.startWarp();
     return this.fly.dur;
   }

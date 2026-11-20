@@ -4,7 +4,7 @@
  * A profundidade de campo (bokeh) é feita nas partículas, onde ela aparece de verdade.
  */
 import { createProgram, createTarget } from './gl.js';
-import { FULL_VS, BRIGHT_FS, COPY_FS, BLUR_FS, COMPOSITE_FS } from './shaders.js';
+import { FULL_VS, BRIGHT_FS, COPY_FS, BLUR_FS, COMPOSITE_FS, FXAA_FS } from './shaders.js';
 import { THEME } from './theme.js';
 
 export class Post {
@@ -15,6 +15,8 @@ export class Post {
     this.progCopy = createProgram(gl, FULL_VS, COPY_FS, 'copy');
     this.progBlur = createProgram(gl, FULL_VS, BLUR_FS, 'blur');
     this.progComp = createProgram(gl, FULL_VS, COMPOSITE_FS, 'composite');
+    this.progFxaa = createProgram(gl, FULL_VS, FXAA_FS, 'fxaa');
+    this.fxaa = true;
     this.vao = gl.createVertexArray();
     this.levels = 4; this.targets = null; this.w = 0; this.h = 0;
     const black = createTarget(gl, 1, 1, false);
@@ -28,7 +30,8 @@ export class Post {
     const mk = (ww, hh) => createTarget(gl, Math.max(2, ww | 0), Math.max(2, hh | 0), this.hdr) || createTarget(gl, Math.max(2, ww | 0), Math.max(2, hh | 0), false);
     const scene = mk(w, h), A = [], B = [];
     for (let l = 0; l < 4; l++) { const f = 2 << l; A.push(mk(w / f, h / f)); B.push(mk(w / f, h / f)); }
-    this.targets = { scene, A, B, all: [scene, ...A, ...B] };
+    const ldr = mk(w, h);
+    this.targets = { scene, A, B, ldr, all: [scene, ldr, ...A, ...B] };
   }
 
   beginScene() {
@@ -59,7 +62,7 @@ export class Post {
     }
     const wts = [.55, .75, 1.0, 1.25].map((w, i) => (i < L ? w : 0)), sum = wts.reduce((a, b) => a + b, 0) || 1;
     const tex = [T.scene.tex, ...[0, 1, 2, 3].map(i => (i < L ? T.A[i].tex : this.black.tex))];
-    this.pass(this.progComp, null, tex, pr => {
+    this.pass(this.progComp, this.fxaa ? T.ldr : null, tex, pr => {
       ['uScene', 'uB0', 'uB1', 'uB2', 'uB3'].forEach((n, i) => gl.uniform1i(pr.u(n), i));
       gl.uniform4f(pr.u('uBW'), wts[0] / sum * 1.9, wts[1] / sum * 1.9, wts[2] / sum * 1.9, wts[3] / sum * 1.9);
       gl.uniform1f(pr.u('uBloom'), THEME.glow.bloom * p.bloom);
@@ -71,6 +74,7 @@ export class Post {
       gl.uniform1f(pr.u('uTime'), p.time);
       gl.uniform2f(pr.u('uRes'), this.w, this.h);
     });
+    if (this.fxaa) this.pass(this.progFxaa, null, [T.ldr.tex], pr => { gl.uniform1i(pr.u('uTex'), 0); gl.uniform2f(pr.u('uTexel'), 1 / this.w, 1 / this.h); });
     gl.bindVertexArray(null);
   }
 }

@@ -38,3 +38,15 @@ A Jornada (primeira aba) é um cérebro 3D procedural em WebGL2 puro, sem depend
 - Qualidade forçada: `?q=0|1|2`.
 
 Sem WebGL2 o app mantém o fundo 2D e a Jornada vira uma lista de cartões em texto. Com `prefers-reduced-motion` a cena fica estática e sem warp.
+
+### Opções (aba "Opções")
+
+Fonte (4 tamanhos), paletas (Neural, Sinapse, Córtex, Matriz) ou cor de destaque personalizada, artefatos voadores (liga/desliga + quantidade) e fundo universo (liga/desliga + intensidade). Tudo aplica na hora e fica salvo em `localStorage` (`rumo_opts`). Qualquer cor passa por uma checagem de contraste (mínimo 4,5:1) e é clareada se preciso. "Restaurar padrão" volta ao original.
+
+### Qualidade de imagem
+
+O canvas respeita o `devicePixelRatio` (limite 1,5x / 2x / 3x conforme a GPU), o cérebro usa FXAA e as sinapses são faixas com borda suavizada de 1 px. Se o fps cair abaixo de ~50, a resolução diminui primeiro (até 72%) e depois os efeitos (artefatos, bloom, partículas).
+
+### Atalhos
+
+`Esc` ou clicar em **RUMO** voltam à tela inicial (a Jornada). Se houver menu aberto, o `Esc` fecha o menu primeiro.

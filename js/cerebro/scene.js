@@ -9,13 +9,13 @@ import { createProgram, bufferF } from './gl.js';
 import { buildBrain } from './brain.js';
 import { Camera, STOPS } from './camera.js';
 import { Post } from './post.js';
-import { clamp, m4 } from './math.js';
+import { clamp, m4, mulberry32 } from './math.js';
 import * as SH from './shaders.js';
 
 const TIERS = [
-  { nome: 'baixa', meshLevel: 5, particles: THEME.particles.low, bloomLevels: 2, dprCap: 1, post: false, nodes: 70 },
-  { nome: 'média', meshLevel: 5, particles: THEME.particles.mid, bloomLevels: 3, dprCap: 1.5, post: true },
-  { nome: 'alta', meshLevel: 6, particles: THEME.particles.high, bloomLevels: 4, dprCap: 2, post: true }
+  { nome: 'baixa', meshLevel: 5, particles: THEME.particles.low, bloomLevels: 2, dprCap: 1.5, post: true, nodes: 70, floaters: 90 },
+  { nome: 'média', meshLevel: 5, particles: THEME.particles.mid, bloomLevels: 3, dprCap: 2, post: true, floaters: 220 },
+  { nome: 'alta', meshLevel: 6, particles: THEME.particles.high, bloomLevels: 4, dprCap: 3, post: true, floaters: 360 }
 ];
 
 function detectTier(gl) {
@@ -47,6 +47,8 @@ export class Scene {
     this.time = 0; this.assemble = 0; this.dirty = true; this.running = false;
     this.dpr = Math.min(window.devicePixelRatio || 1, this.tier.dprCap); this.dprScale = 1; this.ema = 16;
     this.onFrame = null; this.w = 2; this.h = 2; this.cssW = 1; this.cssH = 1;
+    this.defReg = REGIONS.map(r => r.cor);
+    this.look = { uni: 1, floatOn: true, floatQty: 0.6 }; this.degradeLvl = 0; this.partFrac = 1; this.floatCap = 1; this.pal = null;
   }
 
   async init(onProgress) {
@@ -59,6 +61,7 @@ export class Scene {
       part: createProgram(gl, SH.PART_VS, SH.PART_FS, 'particulas'),
       line: createProgram(gl, SH.LINE_VS, SH.LINE_FS, 'sinapses'),
       node: createProgram(gl, SH.NODE_VS, SH.NODE_FS, 'nos'),
+      flo: createProgram(gl, SH.FLOAT_VS, SH.FLOAT_FS, 'artefatos'),
       bg: createProgram(gl, SH.FULL_VS, SH.BG_FS, 'fundo')
     };
     const mkMesh = p => {
@@ -70,8 +73,32 @@ export class Scene {
     this.meshes = [data.parts.brain, data.parts.cerebellum, data.parts.stem].map(mkMesh);
     this.pVao = gl.createVertexArray(); gl.bindVertexArray(this.pVao);
     bufferF(gl, data.particles.pos, 0, 3); bufferF(gl, data.particles.rnd, 1, 4); gl.bindVertexArray(null);
-    this.lVao = gl.createVertexArray(); gl.bindVertexArray(this.lVao);
-    bufferF(gl, data.network.linePos, 0, 3); bufferF(gl, data.network.lineMeta, 1, 4); gl.bindVertexArray(null);
+    // sinapses: cada segmento vira uma faixa (2 triângulos) cuja largura é calculada em pixels no shader
+    {
+      const lp = data.network.linePos, lm = data.network.lineMeta, segs = lp.length / 6, V = segs * 6;
+      const P = new Float32Array(V * 3), O = new Float32Array(V * 3), M = new Float32Array(V * 4), SD = new Float32Array(V * 2);
+      const order = [[0, 1], [0, -1], [1, 1], [0, -1], [1, -1], [1, 1]];   // [vértice (0=início,1=fim), lado]
+      let k = 0;
+      for (let sgi = 0; sgi < segs; sgi++) for (const [e, side] of order) {
+        const me = sgi * 2 + e, ot = sgi * 2 + (1 - e);
+        P.set(lp.subarray(me * 3, me * 3 + 3), k * 3); O.set(lp.subarray(ot * 3, ot * 3 + 3), k * 3);
+        M.set(lm.subarray(me * 4, me * 4 + 4), k * 4); SD[k * 2] = side; SD[k * 2 + 1] = e === 0 ? 1 : -1; k++;
+      }
+      this.lVao = gl.createVertexArray(); gl.bindVertexArray(this.lVao);
+      bufferF(gl, P, 0, 3); bufferF(gl, O, 1, 3); bufferF(gl, M, 2, 4); bufferF(gl, SD, 3, 2); gl.bindVertexArray(null);
+      this.lineVerts = V;
+    }
+    // artefatos voadores
+    {
+      const N = tier.floaters, r = mulberry32(4242), P = new Float32Array(N * 3), R = new Float32Array(N * 4);
+      for (let i = 0; i < N; i++) {
+        const u = r() * 2 - 1, th = r() * 6.2832, rad = 1.5 + Math.pow(r(), 0.8) * 4.2, q = Math.sqrt(1 - u * u);
+        P.set([rad * q * Math.cos(th), rad * u * 0.75, rad * q * Math.sin(th)], i * 3);
+        R.set([r(), 0.6 + r() * 1.1, r(), r()], i * 4);
+      }
+      this.fVao = gl.createVertexArray(); gl.bindVertexArray(this.fVao);
+      bufferF(gl, P, 0, 3); bufferF(gl, R, 1, 4); gl.bindVertexArray(null); this.floatN = N;
+    }
     this.nVao = gl.createVertexArray(); gl.bindVertexArray(this.nVao);
     bufferF(gl, data.network.nodePos, 0, 3); bufferF(gl, data.network.nodeMeta, 1, 4); gl.bindVertexArray(null);
     this.emptyVao = gl.createVertexArray();
@@ -88,6 +115,20 @@ export class Scene {
   }
 
   /* ---------- API pública ---------- */
+  /** Aplica as Opções: paleta {a,b,c,reg:[9 hex]}, universo {uni 0..1}, artefatos {floatOn, floatQty 0..1}. */
+  setLook(l) {
+    if (l.pal) {
+      this.pal = l.pal;
+      if (this.cols) { this.cols.a = hexLin(l.pal.a); this.cols.b = hexLin(l.pal.b); this.cols.c = hexLin(l.pal.c); }
+      if (!this.defReg) this.defReg = REGIONS.map(r => r.cor);
+      if (this.regC) REGIONS.forEach((r, i) => { r.cor = (l.pal.reg || this.defReg)[i]; this.regC.set(hexLin(r.cor), i * 3); });
+      this.onPalette && this.onPalette();
+    }
+    if (l.uni != null) this.look.uni = l.uni;
+    if (l.floatOn != null) this.look.floatOn = l.floatOn;
+    if (l.floatQty != null) this.look.floatQty = l.floatQty;
+    this.dirty = true;
+  }
   setMode(mode, focusKey) {
     if (mode !== this.mode) this.cam.startWarp();
     this.mode = mode; if (focusKey) this.focusKey = focusKey; this.dirty = true;
@@ -95,7 +136,7 @@ export class Scene {
   setProgress(p) { this.progress = clamp(p, 0, 1); this.dirty = true; }
   setHover(i) { this.hover = i; this.dirty = true; }
   setMouse(x, y) { this.cam.setMouse(x, y); this.dirty = true; }
-  flyTo(key) { this.dirty = true; return this.cam.flyTo(key); }
+  flyTo(key, mul) { this.dirty = true; return this.cam.flyTo(key, mul); }
   releaseFly() { this.cam.releaseFly(); }
   warp() { this.cam.startWarp(); this.dirty = true; }
   get flying() { return !!this.cam.fly; }
@@ -103,6 +144,7 @@ export class Scene {
   get stopIndex() { return this.cam.stopF; }
 
   resize() {
+    this.dpr = Math.min(window.devicePixelRatio || 1, this.tier.dprCap);
     const c = this.canvas, cssW = Math.max(1, innerWidth), cssH = Math.max(1, innerHeight), s = this.dpr * this.dprScale;
     this.cssW = cssW; this.cssH = cssH;
     this.w = Math.max(2, Math.round(cssW * s)); this.h = Math.max(2, Math.round(cssH * s));
@@ -180,7 +222,7 @@ export class Scene {
     gl.uniform1f(bg.u('uTan'), Math.tan(cam.fovNow * Math.PI / 360)); gl.uniform1f(bg.u('uAspect'), aspect); gl.uniform1f(bg.u('uTime'), this.time);
     gl.uniform3fv(bg.u('uBg0'), this.cols.bg0); gl.uniform3fv(bg.u('uBg1'), this.cols.bg1);
     gl.uniform3fv(bg.u('uCA'), this.cols.a); gl.uniform3fv(bg.u('uCB'), this.cols.b); gl.uniform3fv(bg.u('uCC'), this.cols.c);
-    gl.uniform1f(bg.u('uDim'), 0.55 + dim * 0.45);
+    gl.uniform1f(bg.u('uDim'), 0.55 + dim * 0.45); gl.uniform3fv(bg.u('uEye'), cam.eye); gl.uniform1f(bg.u('uUni'), this.look.uni);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
@@ -194,15 +236,22 @@ export class Scene {
     // partículas
     const pp = this.prog.part; common(pp);
     gl.uniform1f(pp.u('uFocus'), cam.focus); gl.uniform1f(pp.u('uBokeh'), cam.bokeh * (this.tier.post ? 1 : 0.5)); gl.uniform1f(pp.u('uWarp'), cam.warp);
-    gl.bindVertexArray(this.pVao); gl.drawArrays(gl.POINTS, 0, this.data.particles.count);
+    gl.bindVertexArray(this.pVao); gl.drawArrays(gl.POINTS, 0, Math.floor(this.data.particles.count * this.partFrac));
 
     // sinapses
     const lp = this.prog.line; common(lp);
-    gl.bindVertexArray(this.lVao); gl.drawArrays(gl.LINES, 0, this.data.network.lineCount);
+    gl.uniform2f(lp.u('uRes'), this.w, this.h); gl.uniform1f(lp.u('uLineW'), 1.6 * this.h / Math.max(1, this.cssH));
+    gl.bindVertexArray(this.lVao); gl.drawArrays(gl.TRIANGLES, 0, this.lineVerts);
 
     // nós
     const np = this.prog.node; common(np);
     gl.bindVertexArray(this.nVao); gl.drawArrays(gl.POINTS, 0, this.tier.nodes ? Math.min(this.tier.nodes, this.data.network.nodeCount) : this.data.network.nodeCount);
+    const nf = this.look.floatOn ? Math.floor(this.floatN * this.look.floatQty * this.floatCap) : 0;
+    if (nf > 0) {
+      const fp = this.prog.flo; common(fp);
+      gl.uniform1f(fp.u('uFocus'), cam.focus); gl.uniform1f(fp.u('uBokeh'), cam.bokeh); gl.uniform1f(fp.u('uSize'), 12);
+      gl.bindVertexArray(this.fVao); gl.drawArrays(gl.POINTS, 0, nf);
+    }
     gl.bindVertexArray(null); gl.disable(gl.BLEND);
 
     if (this.usePost) this.post.render({ bloom: 1, warp: cam.warp, aberr: 1, grain: this.reduced ? 0.4 : 1, time: this.time });
@@ -225,15 +274,26 @@ export class Scene {
     });
   }
 
-  /** Resolução adaptativa: mede o tempo entre quadros (dt) e ajusta a escala do canvas. */
+  /** Qualidade adaptativa: mede o tempo entre quadros. Se cair abaixo de ~50 fps reduz primeiro a resolução,
+   *  depois os efeitos (artefatos, bloom, partículas). Se sobrar folga, devolve a resolução aos poucos. */
   adapt(cpuMs, dt) {
     if (this.reduced) return;
     this.ema += (dt * 1000 - this.ema) * 0.05;
     this.adaptTick = (this.adaptTick || 0) + 1;
     if (this.adaptTick < 45) return;
     this.adaptTick = 0;
-    const target = this.mode === 'app' ? 28 : 19;
-    if (this.ema > target && this.dprScale > 0.55) { this.dprScale = Math.max(0.55, this.dprScale * 0.86); this.resize(); }
-    else if (this.ema < 13.5 && this.dprScale < 1) { this.dprScale = Math.min(1, this.dprScale * 1.06); this.resize(); }
+    const target = this.mode === 'app' ? 28 : 19.5;
+    if (this.ema > target) {
+      if (this.dprScale > 0.72) { this.dprScale = Math.max(0.72, this.dprScale * 0.88); this.resize(); }
+      else this.degrade();
+    } else if (this.ema < 14 && this.dprScale < 1) { this.dprScale = Math.min(1, this.dprScale * 1.06); this.resize(); }
+  }
+  degrade() {
+    if (this.degradeLvl >= 3) return;
+    this.degradeLvl++;
+    if (this.degradeLvl === 1) this.floatCap = 0.5;
+    else if (this.degradeLvl === 2) { this.tier = { ...this.tier, bloomLevels: Math.min(2, this.tier.bloomLevels) }; this.post.resize(this.w, this.h, this.tier.bloomLevels); }
+    else this.partFrac = 0.6;
+    this.ema = 16;
   }
 }

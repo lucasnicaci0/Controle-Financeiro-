@@ -35,7 +35,12 @@ export function initCursor() {
     if (document.hidden) return;
     r.x += (m.x - r.x) * 0.18; r.y += (m.y - r.y) * 0.18;
     dot.style.transform = 'translate3d(' + m.x + 'px,' + m.y + 'px,0)'; ring.style.transform = 'translate3d(' + r.x + 'px,' + r.y + 'px,0)';
-    trail.push({ x: m.x, y: m.y, t: performance.now() }); while (trail.length > 22) trail.shift();
+    if (seen) {
+      const last = trail[trail.length - 1];
+      if (last && Math.hypot(last.x - m.x, last.y - m.y) > 220) trail.length = 0;   // salto grande: não liga os pontos com uma linha
+      trail.push({ x: m.x, y: m.y, t: performance.now() });
+    }
+    while (trail.length > 22) trail.shift();
     g.clearRect(0, 0, W, H);
     g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
     for (let i = 1; i < trail.length; i++) {

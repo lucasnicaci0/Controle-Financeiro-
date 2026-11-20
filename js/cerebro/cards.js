@@ -39,7 +39,8 @@ export function regionData(res, con, brl) {
 
 export class Cards {
   constructor(scene, root, opts) {
-    this.scene = scene; this.root = root; this.onOpen = opts.onOpen; this.fmt = opts.brl;
+    this.scene = scene; this.root = root; this.onOpen = opts.onOpen; this.fmt = opts.brl; this.tabName = opts.tabName || (t => t); this.diving = false;
+    this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.active = false; this.spacer = null; this.hoverBrain = -1; this.hoverCard = -1; this.pinned = -1; this.pinUntil = 0;
     this.ignoreScroll = 0; this.data = {}; this.lastFrame = performance.now();
     this.vis = new Float32Array(9); this.drawn = new Float32Array(9);
@@ -56,7 +57,7 @@ export class Cards {
   build() {
     const r = this.root;
     this.hero = mk('div', 'jhero');
-    this.hero.append(mk('h2', 'jt', 'Seu cérebro financeiro'), mk('p', 'jp', 'Role para entrar e conhecer cada região do seu dinheiro.'), mk('div', 'jhint', '↓'));
+    this.hero.append(mk('h2', 'jt', 'Seu cérebro financeiro'), mk('p', 'jp', 'Role para entrar e conhecer cada região do seu dinheiro.'), (() => { const d = mk('div', 'jhint', '↓'); d.setAttribute('aria-hidden', 'true'); return d; })());
     this.svg = sv('svg', { class: 'rlines', 'aria-hidden': 'true' });
     this.paths = []; this.dots = [];
     REGIONS.forEach((reg, i) => {
@@ -81,7 +82,21 @@ export class Cards {
     REGIONS.forEach((reg, i) => { const b = mk('button', 'rchip', reg.nome); b.type = 'button'; b.setAttribute('role', 'listitem'); b.style.setProperty('--rc', reg.cor); b.onclick = () => this.fly(i); this.strip.append(b); });
     this.back = mk('button', 'rback btn ghost', 'Visão geral'); this.back.type = 'button'; this.back.onclick = () => this.overview();
     this.back.setAttribute('aria-label', 'Voltar à visão geral do cérebro');
-    r.append(this.hero, this.svg, ...this.cards, this.strip, this.back);
+    // pontos de navegação: botões com halo, pulso, rótulo e área de toque de 52 px (via ::before)
+    this.hs = REGIONS.map((reg, i) => {
+      const b = mk('button', 'hs'); b.type = 'button'; b.style.setProperty('--rc', reg.cor);
+      const nome = this.tabName(reg.tab);
+      b.setAttribute('aria-label', 'Abrir ' + nome + ' — ' + reg.nome);
+      const lab = mk('span', 'hs-label'); lab.append(mk('b', null, nome), mk('i', null, reg.nome));
+      b.append(mk('span', 'hs-halo'), mk('span', 'hs-core'), lab);
+      b.addEventListener('click', e => { e.stopPropagation(); this.dive(i); });
+      b.addEventListener('pointerenter', () => { this.hoverCard = i; this.scene.setHover(i); });
+      b.addEventListener('pointerleave', () => { this.hoverCard = -1; this.scene.setHover(this.hoverBrain); });
+      b.addEventListener('focus', () => { this.hoverCard = i; this.scene.setHover(i); });
+      b.addEventListener('blur', () => { this.hoverCard = -1; this.scene.setHover(this.hoverBrain); });
+      return b;
+    });
+    r.append(this.hero, this.svg, ...this.cards, ...this.hs, this.strip, this.back);
     this.measure();
   }
 
@@ -91,6 +106,29 @@ export class Cards {
     this.data = regionData(res, con, this.fmt);
     this.cards.forEach((c, i) => { const d = this.data[REGIONS[i].id]; if (!d) return; c._v.textContent = d.v; c._v.className = 'rv ' + (d.t || ''); c._s.textContent = d.s; });
     this.measure();
+  }
+
+  /** Troca de paleta: repinta cartões, linhas e pontos. */
+  recolor() {
+    REGIONS.forEach((r, i) => {
+      this.cards[i].style.setProperty('--rc', r.cor); this.hs[i].style.setProperty('--rc', r.cor);
+      this.paths[i].setAttribute('stroke', r.cor); this.dots[i].setAttribute('fill', r.cor);
+    });
+  }
+
+  /** Clique num ponto: a câmera mergulha na região, a tela vira zoom + desfoque + brilho, e só então a aba abre. */
+  dive(i) {
+    if (this.diving) return;
+    const reg = REGIONS[i];
+    if (this.reduced) { this.onOpen(reg.tab); return; }
+    const a = this.scene.anchors[i], b = document.body;
+    this.diving = true; b.style.setProperty('--dx', a.x + 'px'); b.style.setProperty('--dy', a.y + 'px'); b.classList.add('diving');
+    const dur = this.scene.flyTo(reg.id, 0.62), now = performance.now();
+    this.pinned = i; this.pinUntil = now + dur * 1000 + 900; this.ignoreScroll = now + dur * 1000 + 400;
+    setTimeout(() => {
+      this.scene.releaseFly(); this.onOpen(reg.tab);
+      setTimeout(() => { b.classList.remove('diving'); this.diving = false; }, 450);
+    }, dur * 1000 * 0.92);
   }
 
   attach(spacer) { this.spacer = spacer; }
@@ -168,7 +206,7 @@ export class Cards {
     }
 
     // posições
-    const pos = new Array(9).fill(null), pad = Math.max(14, W * 0.045), top = 92, bot = H - (mob ? 24 : 40);
+    const pos = new Array(9).fill(null), pad = Math.max(14, W * 0.045), top = W >= 620 ? 160 : 92, bot = H - (mob ? 24 : 40);
     const list = REGIONS.map((_, i) => i).filter(i => want[i] > 0 && A[i].ok);
     if (mob) {
       list.forEach(i => { const [cw, ch] = this.cw[i]; pos[i] = { x: 12, y: H - ch - 92, w: W - 24, side: 'b' }; });
@@ -183,6 +221,32 @@ export class Cards {
       list.forEach(i => {
         const [cw, ch] = this.cw[i], left = A[i].x > W * 0.52;
         pos[i] = { x: left ? pad : W - cw - pad, y: clamp(A[i].y - ch / 2, top, Math.max(top, bot - ch)), side: left ? 'l' : 'r' };
+      });
+    }
+
+    // pontos de navegação (visíveis depois que se entra no cérebro)
+    const hv = this.active ? clamp((f - 0.75) * 2.5, 0, 1) : 0;
+    this.hs.forEach((h, i) => {
+      const a = A[i], show = hv > 0.02 && a.ok;
+      h.style.visibility = show ? 'visible' : 'hidden'; h.style.opacity = hv.toFixed(2);
+      if (show) {
+        h.style.transform = 'translate3d(' + a.x.toFixed(1) + 'px,' + a.y.toFixed(1) + 'px,0) scale(' + clamp(a.s * 0.9, 0.8, 1.35).toFixed(2) + ')';
+        h.classList.toggle('flip', a.x > W * 0.6); h.classList.toggle('hl', i === this.hoverBrain || i === this.hoverCard);
+      }
+    });
+
+    // telas de toque: rótulos sempre visíveis, mas sem sobrepor uns aos outros (o rótulo em foco tem prioridade)
+    if (this.touch === undefined) this.touch = matchMedia('(hover:none)').matches;
+    if (this.touch && hv > 0.02) {
+      const placed = [], ord = REGIONS.map((_, i) => i).sort((x, y) => (this.hs[y].classList.contains('hl') ? 1 : 0) - (this.hs[x].classList.contains('hl') ? 1 : 0));
+      ord.forEach(i => {
+        const h = this.hs[i], a = A[i]; if (!a.ok) return;
+        const lab = h.firstElementChild.nextElementSibling.nextElementSibling, w = (lab.offsetWidth || 70) + 4, ht = 28, flip = h.classList.contains('flip');
+        const r = { x: flip ? a.x - 22 - w : a.x + 22, y: a.y - 20, w, h: ht };
+        const hit = placed.some(p => r.x < p.x + p.w && r.x + r.w > p.x && r.y < p.y + p.h && r.y + r.h > p.y)
+          || A.some((o, j) => j !== i && o.ok && o.x > r.x - 12 && o.x < r.x + r.w + 12 && o.y > r.y - 12 && o.y < r.y + r.h + 12);
+        h.classList.toggle('nolabel', hit && !h.classList.contains('hl'));
+        if (!hit || h.classList.contains('hl')) placed.push(r);
       });
     }
 

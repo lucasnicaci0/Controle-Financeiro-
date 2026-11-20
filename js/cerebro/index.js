@@ -24,7 +24,7 @@ const progress = (p, t) => { if (bar) bar.style.width = Math.round(p * 100) + '%
 const hideLoader = () => { if (!loader) return; loader.classList.add('done'); setTimeout(() => loader.remove(), 900); };
 
 // o mesmo mapa de abas do app para a câmera nas telas comuns
-const FOCO = { jornada: 'overview', painel: 'parietal', lanc: 'hipocampo', orc: 'prefrontal', metas: 'prefrontal', contas: 'estriado', cons: 'temporal' };
+const FOCO = { opcoes: 'overview', jornada: 'overview', painel: 'parietal', lanc: 'hipocampo', orc: 'prefrontal', metas: 'prefrontal', contas: 'estriado', cons: 'temporal' };
 
 async function boot() {
   let scene = null, cards = null, api;
@@ -32,13 +32,14 @@ async function boot() {
     supported: false,
     fmt: CB.fmt,
     reveal: revealText, replay: replayReveal,
-    setMode() {}, onView() {}, warp() {}, enterJourney() {}, leaveJourney() {}, setData() {}
+    setMode() {}, home() {}, setLook() {}, onView() {}, warp() {}, enterJourney() {}, leaveJourney() {}, setData() {}
   };
   try {
     progress(0.02, 'Preparando o cérebro…');
     scene = new Scene($('#gl'));
     await scene.init(progress);
-    cards = new Cards(scene, $('#cerebro-ui'), { onOpen: tab => CB.open(tab), brl: CB.fmt });
+    cards = new Cards(scene, $('#cerebro-ui'), { onOpen: tab => CB.open(tab), brl: CB.fmt, tabName: t => ((document.querySelector('#nav button[data-v="' + t + '"]') || {}).textContent || t) });
+    scene.onPalette = () => cards.recolor();
     scene.onLost = () => { document.documentElement.classList.remove('gl-on'); $('#fx').hidden = false; };
     let spacer = null, listBox = null;
     api = Object.assign(base, {
@@ -50,6 +51,8 @@ async function boot() {
         scene.setMode('app', FOCO[v] || 'parietal');
       },
       warp() { if (!reduced) scene.warp(); },
+      home() { cards.pinned = -1; scene.releaseFly(); },
+      setLook(l) { scene.setLook(l); },
       enterJourney(sp, list) {
         spacer = sp; listBox = list; cards.attach(sp); document.body.classList.add('is-journey');
         scene.setMode('journey'); cards.setActive(true); scene.setProgress(0); cards.renderList(list, false);
