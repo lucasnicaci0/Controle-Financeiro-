@@ -1,6 +1,6 @@
 /**
  * FINANÇAS DB — back-end em Google Apps Script + Google Planilhas
- * Versão 1.0.0
+ * Versão 1.1.0
  *
  * COMO USAR (resumo):
  *  1. Cole este arquivo em Extensões → Apps Script (script vinculado à planilha "Financas DB").
@@ -20,7 +20,7 @@
  * o que facilita trocar a planilha por outro banco no futuro.
  */
 
-var VERSAO = '1.0.0';
+var VERSAO = '1.1.0';
 
 var CONFIG = {
   CLIENT_ID: 'COLE_AQUI_O_ID_DO_CLIENTE_OAUTH',
@@ -37,8 +37,8 @@ var AVISO = 'Orientação educativa de planejamento financeiro. Não é recomend
 var TABELAS = {
   Usuarios:    ['Email', 'Nome', 'Criado', 'UltimoAcesso'],
   Contas:      ['Id', 'Email', 'Nome', 'Tipo', 'SaldoInicial', 'Criado'],
-  Categorias:  ['Id', 'Email', 'Nome', 'Tipo', 'Cor'],
-  Lancamentos: ['Id', 'Email', 'Data', 'Tipo', 'Valor', 'ContaId', 'CategoriaId', 'Descricao', 'Chave', 'Criado'],
+  Categorias:  ['Id', 'Email', 'Nome', 'Tipo', 'Cor', 'Icone', 'Arquivada'],
+  Lancamentos: ['Id', 'Email', 'Data', 'Tipo', 'Valor', 'ContaId', 'CategoriaId', 'Descricao', 'Chave', 'Criado', 'Tags'],
   Orcamentos:  ['Id', 'Email', 'CategoriaId', 'Mes', 'Limite'],
   Metas:       ['Id', 'Email', 'Nome', 'ValorAlvo', 'ValorAtual', 'Prazo', 'Criado'],
   // Reservada para a conversa com IA (fase 2). O motor de regras não grava aqui.
@@ -46,17 +46,40 @@ var TABELAS = {
 };
 
 // Colunas formatadas como texto: impedem que a planilha converta datas ou interprete fórmulas.
-var COLUNAS_TEXTO = ['Data', 'Mes', 'Prazo', 'Criado', 'UltimoAcesso', 'Nome', 'Descricao', 'Chave', 'Papel', 'Texto'];
+var COLUNAS_TEXTO = ['Data', 'Mes', 'Prazo', 'Criado', 'UltimoAcesso', 'Nome', 'Descricao', 'Chave', 'Papel', 'Texto', 'Tags', 'Icone', 'Arquivada'];
 
 var TIPOS_CONTA = ['corrente', 'poupanca', 'reserva', 'investimento', 'dinheiro', 'cartao'];
 
+// [nome, tipo, cor, ícone]. Ordem = ordem de exibição.
 var CATEGORIAS_PADRAO = [
-  ['Alimentação', 'despesa', '#f97316'], ['Moradia', 'despesa', '#6366f1'],
-  ['Transporte', 'despesa', '#0ea5e9'], ['Saúde', 'despesa', '#ef4444'],
-  ['Lazer', 'despesa', '#a855f7'], ['Educação', 'despesa', '#14b8a6'],
-  ['Assinaturas', 'despesa', '#eab308'], ['Outros', 'despesa', '#94a3b8'],
-  ['Salário', 'receita', '#22c55e'], ['Extras', 'receita', '#84cc16']
+  ['Alimentação', 'despesa', '#f97316', '🍽️'], ['Assinaturas', 'despesa', '#eab308', '🔁'], ['Restaurantes', 'despesa', '#fb7185', '🍔'],
+  ['Casa', 'despesa', '#6366f1', '🏠'], ['Compras', 'despesa', '#d946ef', '🛍️'], ['Cuidados pessoais', 'despesa', '#f472b6', '💅'],
+  ['Dívidas/Empréstimos', 'despesa', '#dc2626', '💳'], ['Educação', 'despesa', '#14b8a6', '🎓'], ['Família e Filhos', 'despesa', '#fb923c', '👨‍👩‍👧'],
+  ['Impostos e Taxas', 'despesa', '#64748b', '🧾'], ['Investimento', 'despesa', '#22c55e', '📈'], ['Lazer e Hobbies', 'despesa', '#a855f7', '🎮'],
+  ['Mercado', 'despesa', '#84cc16', '🛒'], ['Pets', 'despesa', '#f59e0b', '🐾'], ['Presentes e Doações', 'despesa', '#ec4899', '🎁'],
+  ['Roupas', 'despesa', '#8b5cf6', '👕'], ['Saúde', 'despesa', '#ef4444', '🩺'], ['Trabalho', 'despesa', '#0ea5e9', '💼'],
+  ['Transporte', 'despesa', '#38bdf8', '🚌'], ['Viagens', 'despesa', '#06b6d4', '✈️'],
+  // sugeridas
+  ['Moradia/Aluguel', 'despesa', '#818cf8', '🔑'], ['Contas de consumo', 'despesa', '#facc15', '💡'], ['Seguros', 'despesa', '#94a3b8', '🛡️'],
+  ['Manutenção de veículo', 'despesa', '#78716c', '🔧'],
+  ['Outros', 'despesa', '#94a3b8', '📦'],
+  ['Salário', 'receita', '#22c55e', '💰'], ['Investimentos', 'receita', '#10b981', '📊'], ['Empréstimos', 'receita', '#06b6d4', '🤝'],
+  ['Outras receitas', 'receita', '#84cc16', '➕']
 ];
+// Nomes antigos que contam como "já existe" ao completar os padrões de quem usa o app desde a versão 1.0.
+var ALIAS_PADRAO = { 'moradia/aluguel': ['moradia'], 'lazer e hobbies': ['lazer'], 'outras receitas': ['extras'] };
+
+function categoriasPadrao_(email, existentes) {
+  var tem = {};
+  (existentes || []).forEach(function (c) { tem[c.Tipo + '|' + norm_(c.Nome)] = 1; });
+  var novas = [];
+  CATEGORIAS_PADRAO.forEach(function (c) {
+    var nomes = [norm_(c[0])].concat(ALIAS_PADRAO[norm_(c[0])] || []);
+    if (nomes.some(function (n) { return tem[c[1] + '|' + n]; })) return;
+    novas.push({ Id: Utilities.getUuid(), Email: email, Nome: c[0], Tipo: c[1], Cor: c[2], Icone: c[3], Arquivada: '' });
+  });
+  return novas;
+}
 
 /* ======================= ENTRADA (doGet / doPost) ======================= */
 
@@ -74,7 +97,7 @@ function doPost(e) {
     resp = rotear_(corpo);
   } catch (err) {
     if (err && err.codigo) {
-      resp = { ok: false, erro: err.codigo, mensagem: err.message };
+      resp = { ok: false, erro: err.codigo, mensagem: err.message, detalhes: err.detalhes };
     } else {
       console.error(err);
       resp = { ok: false, erro: 'erro_interno', mensagem: 'Erro interno. Tente novamente.' };
@@ -97,7 +120,7 @@ function erro_(codigo, msg) {
 
 var LEITURAS = {
   listar_contas: 1, listar_categorias: 1, listar_lancamentos: 1, listar_orcamentos: 1,
-  listar_metas: 1, resumo: 1, consultor: 1, exportar_dados: 1
+  listar_metas: 1, listar_tags: 1, resumo: 1, consultor: 1, exportar_dados: 1
 };
 
 function rotear_(corpo) {
@@ -226,9 +249,16 @@ function diasEntre_(a, b) { return Math.round((Date.parse(b) - Date.parse(a)) / 
 
 function aba_(nome) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(nome);
+  var sh = ss.getSheetByName(nome), cab = TABELAS[nome];
+  if (sh && sh.getLastColumn() < cab.length) {
+    // migração: planilha criada numa versão anterior; acrescenta as colunas novas no fim
+    var ja = sh.getLastColumn();
+    sh.getRange(1, ja + 1, 1, cab.length - ja).setValues([cab.slice(ja)]).setFontWeight('bold');
+    for (var k = ja; k < cab.length; k++) {
+      if (COLUNAS_TEXTO.indexOf(cab[k]) >= 0) sh.getRange(1, k + 1, sh.getMaxRows(), 1).setNumberFormat('@');
+    }
+  }
   if (!sh) {
-    var cab = TABELAS[nome];
     sh = ss.insertSheet(nome);
     sh.getRange(1, 1, 1, cab.length).setValues([cab]).setFontWeight('bold');
     sh.setFrozenRows(1);
@@ -315,12 +345,38 @@ function excluirPorId_(nome, email, id) {
   return { id: r.Id };
 }
 
+// Move lançamentos e orçamentos de uma categoria para outra (gravação em bloco: uma escrita por coluna).
+function reatribuir_(email, de, para) {
+  var sh = aba_('Lancamentos'), cab = TABELAS.Lancamentos, n = sh.getLastRow() - 1;
+  if (n > 0) {
+    var col = cab.indexOf('CategoriaId') + 1, ce = cab.indexOf('Email'), vals = sh.getRange(2, 1, n, cab.length).getValues(), cats = [];
+    for (var i = 0; i < n; i++) {
+      var v = vals[i][col - 1];
+      if (v === de && String(vals[i][ce]).toLowerCase() === email) v = para;
+      cats.push([v]);
+    }
+    sh.getRange(2, col, n, 1).setValues(cats);
+    memo_.Lancamentos = null;
+  }
+  var existentes = doUsuario_('Orcamentos', email);
+  existentes.filter(function (o) { return o.CategoriaId === de; }).forEach(function (o) {
+    var igual = existentes.filter(function (x) { return x.CategoriaId === para && String(x.Mes) === String(o.Mes); })[0];
+    if (igual) {   // já há orçamento no destino para o mês: soma os limites e remove o antigo
+      atualizar_('Orcamentos', igual._linha, Object.assign({}, igual, { Limite: Number(igual.Limite) + Number(o.Limite) }));
+      o._remover = true;
+    } else atualizar_('Orcamentos', o._linha, Object.assign({}, o, { CategoriaId: para }));
+  });
+  existentes.filter(function (o) { return o._remover; }).map(function (o) { return o._linha; }).sort(function (a, b) { return b - a; })
+    .forEach(function (l) { apagarLinha_('Orcamentos', l); });
+}
+
 /* ======================= FORMATOS DE SAÍDA (nunca expõem e-mail) ======================= */
 
-function sCategoria_(c) { return { id: c.Id, nome: c.Nome, tipo: c.Tipo, cor: c.Cor }; }
+function sCategoria_(c) { return { id: c.Id, nome: c.Nome, tipo: c.Tipo, cor: c.Cor, icone: c.Icone || '🏷️', arquivada: String(c.Arquivada) === 'sim' }; }
+function tagsDe_(t) { return String(t || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
 function sConta_(c, saldo) { return { id: c.Id, nome: c.Nome, tipo: c.Tipo, saldoInicial: Number(c.SaldoInicial) || 0, saldo: saldo }; }
 function sLanc_(l) {
-  return { id: l.Id, data: String(l.Data), tipo: l.Tipo, valor: Number(l.Valor), contaId: l.ContaId, categoriaId: l.CategoriaId, descricao: l.Descricao };
+  return { id: l.Id, data: String(l.Data), tipo: l.Tipo, valor: Number(l.Valor), contaId: l.ContaId, categoriaId: l.CategoriaId, descricao: l.Descricao, tags: tagsDe_(l.Tags) };
 }
 function sOrc_(o) { return { id: o.Id, categoriaId: o.CategoriaId, mes: String(o.Mes), limite: Number(o.Limite) }; }
 function sMeta_(m) {
@@ -357,6 +413,18 @@ function brl_(n) {
 
 /* ======================= VALIDAÇÃO DE LANÇAMENTO ======================= */
 
+// Até 8 tags por lançamento, sem '#', sem repetir (ignora maiúsculas), até 24 caracteres cada.
+function normalizaTags_(t) {
+  var lista = Array.isArray(t) ? t : String(t || '').split(',');
+  var vistos = {}, out = [];
+  lista.forEach(function (x) {
+    x = seguro_(String(x).replace(/^[#=+\-@\s]+/, ''), 24).replace(/,/g, ' ').trim();
+    var k = norm_(x);
+    if (x && !vistos[k] && out.length < 8) { vistos[k] = 1; out.push(x); }
+  });
+  return out.join(',');
+}
+
 function validarLanc_(email, d) {
   var tipo = d.tipo === 'receita' ? 'receita' : (d.tipo === 'despesa' ? 'despesa' : null);
   if (!tipo) throw erro_('tipo_invalido', 'Tipo deve ser receita ou despesa.');
@@ -367,8 +435,13 @@ function validarLanc_(email, d) {
   var contaId = String(d.contaId || '');
   if (!doUsuario_('Contas', email).some(function (c) { return c.Id === contaId; })) throw erro_('conta_invalida', 'Conta inválida.');
   var catId = String(d.categoriaId || '');
-  if (catId && !doUsuario_('Categorias', email).some(function (c) { return c.Id === catId; })) throw erro_('categoria_invalida', 'Categoria inválida.');
-  return { Data: data, Tipo: tipo, Valor: valor, ContaId: contaId, CategoriaId: catId, Descricao: seguro_(d.descricao, 200) };
+  if (catId) {
+    var cat = doUsuario_('Categorias', email).filter(function (c) { return c.Id === catId; })[0];
+    if (!cat) throw erro_('categoria_invalida', 'Categoria inválida.');
+    if (String(cat.Arquivada) === 'sim') throw erro_('categoria_arquivada', 'Essa categoria está arquivada. Desarquive ou escolha outra.');
+    if (cat.Tipo !== tipo) throw erro_('categoria_invalida', 'A categoria não é de ' + tipo + '.');
+  }
+  return { Data: data, Tipo: tipo, Valor: valor, ContaId: contaId, CategoriaId: catId, Descricao: seguro_(d.descricao, 200), Tags: normalizaTags_(d.tags) };
 }
 
 /* ======================= AÇÕES ======================= */
@@ -379,10 +452,7 @@ var ACOES = {
     var existe = ler_('Usuarios').filter(function (r) { return String(r.Email).toLowerCase() === u.email; })[0];
     if (!existe) {
       acrescentar_('Usuarios', [{ Email: u.email, Nome: seguro_(u.nome, 80), Criado: agora_(), UltimoAcesso: agora_() }]);
-      var cats = CATEGORIAS_PADRAO.map(function (c) {
-        return { Id: Utilities.getUuid(), Email: u.email, Nome: c[0], Tipo: c[1], Cor: c[2] };
-      });
-      acrescentar_('Categorias', cats);
+      acrescentar_('Categorias', categoriasPadrao_(u.email, []));
       acrescentar_('Contas', [{ Id: Utilities.getUuid(), Email: u.email, Nome: 'Carteira', Tipo: 'dinheiro', SaldoInicial: 0, Criado: agora_() }]);
     } else {
       atualizar_('Usuarios', existe._linha, Object.assign({}, existe, { UltimoAcesso: agora_() }));
@@ -415,15 +485,55 @@ var ACOES = {
   salvar_categoria: function (u, d) {
     var nome = seguro_(d.nome, 40);
     if (!nome) throw erro_('nome_invalido', 'Informe o nome da categoria.');
-    var tipo = d.tipo === 'receita' ? 'receita' : 'despesa';
-    return sCategoria_(upsert_('Categorias', u.email, String(d.id || ''), { Nome: nome, Tipo: tipo, Cor: corOk_(d.cor) }));
+    var tipo = d.tipo === 'receita' ? 'receita' : 'despesa', id = String(d.id || '');
+    var todas = doUsuario_('Categorias', u.email);
+    if (todas.some(function (c) { return c.Id !== id && c.Tipo === tipo && norm_(c.Nome) === norm_(nome); })) {
+      throw erro_('duplicada', 'Já existe uma categoria de ' + tipo + ' com esse nome.');
+    }
+    if (id) {
+      var atual = todas.filter(function (c) { return c.Id === id; })[0];
+      if (atual && atual.Tipo !== tipo && doUsuario_('Lancamentos', u.email).some(function (l) { return l.CategoriaId === id; })) {
+        throw erro_('em_uso', 'Não dá para mudar o tipo de uma categoria que já tem lançamentos.');
+      }
+    }
+    var icone = seguro_(d.icone, 8) || '🏷️';
+    return sCategoria_(upsert_('Categorias', u.email, id, { Nome: nome, Tipo: tipo, Cor: corOk_(d.cor), Icone: icone }));
   },
+  arquivar_categoria: function (u, d) {
+    var id = String(d.id || '');
+    var r = doUsuario_('Categorias', u.email).filter(function (c) { return c.Id === id; })[0];
+    if (!r) throw erro_('nao_encontrado', 'Categoria não encontrada.');
+    return sCategoria_(upsert_('Categorias', u.email, id, { Arquivada: d.arquivada === false ? '' : 'sim' }));
+  },
+  // Não exclui categoria com lançamentos, a menos que o app peça para reatribuir (reatribuirPara = id de outra categoria do mesmo tipo).
   excluir_categoria: function (u, d) {
     var id = String(d.id || '');
-    var usada = doUsuario_('Lancamentos', u.email).some(function (l) { return l.CategoriaId === id; }) ||
-      doUsuario_('Orcamentos', u.email).some(function (o) { return o.CategoriaId === id; });
-    if (usada) throw erro_('em_uso', 'A categoria está em uso.');
-    return excluirPorId_('Categorias', u.email, id);
+    var cat = doUsuario_('Categorias', u.email).filter(function (c) { return c.Id === id; })[0];
+    if (!cat) throw erro_('nao_encontrado', 'Categoria não encontrada.');
+    var lancs = doUsuario_('Lancamentos', u.email).filter(function (l) { return l.CategoriaId === id; }).length;
+    var orcs = doUsuario_('Orcamentos', u.email).filter(function (o) { return o.CategoriaId === id; });
+    if (lancs || orcs.length) {
+      var dest = String(d.reatribuirPara || '');
+      if (!dest) {
+        var e = erro_('em_uso', 'A categoria tem ' + lancs + ' lançamento(s) e ' + orcs.length + ' orçamento(s). Escolha outra categoria para receber esses itens.');
+        e.detalhes = { lancamentos: lancs, orcamentos: orcs.length };
+        throw e;
+      }
+      var alvo = doUsuario_('Categorias', u.email).filter(function (c) { return c.Id === dest; })[0];
+      if (!alvo || alvo.Id === id || alvo.Tipo !== cat.Tipo) throw erro_('categoria_invalida', 'Escolha outra categoria do mesmo tipo (' + cat.Tipo + ').');
+      reatribuir_(u.email, id, dest);
+    }
+    return Object.assign(excluirPorId_('Categorias', u.email, id), { reatribuidos: lancs });
+  },
+  restaurar_categorias_padrao: function (u) {
+    var novas = categoriasPadrao_(u.email, doUsuario_('Categorias', u.email));
+    acrescentar_('Categorias', novas);
+    return { adicionadas: novas.length, nomes: novas.map(function (c) { return c.Nome; }) };
+  },
+  listar_tags: function (u) {
+    var cont = {};
+    doUsuario_('Lancamentos', u.email).forEach(function (l) { tagsDe_(l.Tags).forEach(function (t) { var k = norm_(t); cont[k] = cont[k] || { tag: t, total: 0 }; cont[k].total++; }); });
+    return Object.keys(cont).map(function (k) { return cont[k]; }).sort(function (a, b) { return b.total - a.total; });
   },
 
   /* ---- lançamentos ---- */

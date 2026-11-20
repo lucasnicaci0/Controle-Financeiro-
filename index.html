@@ -10,6 +10,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="config.js"></script>
 <style>
 :root{
   --bg:#05020A; --ink:#F5F3FF; --mute:#b2a3ee; --line:rgba(167,139,250,.2);
@@ -92,6 +93,19 @@ button,input,select{font:inherit;color:inherit}
 .big{font-size:clamp(2.2667rem,5.4vw,3.4667rem);font-weight:700;letter-spacing:-.03em;line-height:1.1;font-variant-numeric:tabular-nums}
 .stat{font-size:1.7333rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .pos{color:var(--good)}.neg{color:var(--bad)}
+.cat-ico{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:12px;border:1px solid;font-size:1.2rem;flex:none}
+.cat-ico.grande{width:52px;height:52px;font-size:1.6rem}
+.item.arq{opacity:.6}
+.btn.mini{padding:6px 10px;font-size:.8rem}
+.ico-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(40px,1fr));gap:6px}
+.ico-grade button{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);border-radius:10px;padding:6px;font-size:1.2rem;cursor:pointer}
+.ico-grade button.on{border-color:var(--ciano,#22D3EE);background:rgba(34,211,238,.18)}
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.tags em{font-style:normal;font-size:.72rem;padding:1px 8px;border-radius:999px;background:rgba(139,92,246,.22);color:#e4dbff}
+.planos{position:relative;z-index:6;max-width:1000px;margin:0 auto;padding:40px 16px 90px}
+.planos h2{text-align:center;margin:0 0 12px}.planos .seg{margin:0 auto 18px;display:flex;width:fit-content}
+.planos-grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.plano.destaque{outline:2px solid #8B5CF6}.plano .preco{font-size:1.8rem;font-weight:700}.plano .preco small{font-size:.9rem;font-weight:400;color:var(--mute)}
+.plano ul{padding-left:18px;margin:12px 0}.aviso-ex{color:#fbbf24}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.07);font-size:0.8rem}
 .dot{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:0 0 10px currentColor}
 
@@ -241,6 +255,7 @@ body.in-app #scrim{opacity:1}
         <button data-v="orc">Orçamentos</button>
         <button data-v="metas">Metas</button>
         <button data-v="contas">Contas</button>
+        <button data-v="cats">Categorias</button>
         <button data-v="cons">Consultor</button>
         <button data-v="opcoes">Opções</button>
       </nav>
@@ -263,6 +278,8 @@ const CONFIG = {
   API_URL:   'COLE_AQUI_A_URL_EXEC',
   CLIENT_ID: 'COLE_AQUI_O_ID_DO_CLIENTE_OAUTH'
 };
+// config.js (editável) tem prioridade quando preenchido
+(function () { const c = window.RUMO_CONFIG || {}; if (c.API_URL) CONFIG.API_URL = c.API_URL; if (c.CLIENT_ID) CONFIG.CLIENT_ID = c.CLIENT_ID; })();
 
 /*PURE_START*/
 const TZ = 'America/Sao_Paulo';
@@ -495,7 +512,7 @@ async function api(acao, dados) {
 /* ======================= modo demonstração (dados fictícios em memória) ======================= */
 const demoDB = (() => {
   const id = () => (crypto.randomUUID ? crypto.randomUUID() : 'i' + Math.random().toString(36).slice(2));
-  const cats = [['Alimentação', 'despesa', '#f97316'], ['Moradia', 'despesa', '#6366f1'], ['Transporte', 'despesa', '#0ea5e9'], ['Saúde', 'despesa', '#ef4444'], ['Lazer', 'despesa', '#a855f7'], ['Educação', 'despesa', '#14b8a6'], ['Assinaturas', 'despesa', '#eab308'], ['Outros', 'despesa', '#94a3b8'], ['Salário', 'receita', '#22c55e'], ['Extras', 'receita', '#84cc16']].map(c => ({ id: id(), nome: c[0], tipo: c[1], cor: c[2] }));
+  const cats = [['Alimentação', 'despesa', '#f97316'], ['Moradia', 'despesa', '#6366f1'], ['Transporte', 'despesa', '#0ea5e9'], ['Saúde', 'despesa', '#ef4444'], ['Lazer', 'despesa', '#a855f7'], ['Educação', 'despesa', '#14b8a6'], ['Assinaturas', 'despesa', '#eab308'], ['Outros', 'despesa', '#94a3b8'], ['Salário', 'receita', '#22c55e'], ['Extras', 'receita', '#84cc16']].map(c => ({ id: id(), nome: c[0], tipo: c[1], cor: c[2], icone: ({ 'Alimentação': '🍽️', 'Moradia': '🏠', 'Transporte': '🚌', 'Saúde': '🩺', 'Lazer': '🎮', 'Educação': '🎓', 'Assinaturas': '🔁', 'Outros': '📦', 'Salário': '💰', 'Extras': '➕' })[c[0]] || '🏷️', arquivada: false }));
   const cat = n => cats.find(c => c.nome === n).id;
   const contas = [{ id: id(), nome: 'Banco principal', tipo: 'corrente', saldoInicial: 1200 }, { id: id(), nome: 'Reserva', tipo: 'reserva', saldoInicial: 3000 }, { id: id(), nome: 'Carteira', tipo: 'dinheiro', saldoInicial: 80 }];
   const lanc = [], hoje = Number(hojeISO().slice(8));
@@ -541,7 +558,7 @@ function demo(acao, d) {
     case 'listar_contas': return ok(saldos());
     case 'listar_categorias': return ok(D.cats);
     case 'listar_lancamentos': return ok(doMes(d.mes).sort((a, b) => (a.data < b.data ? 1 : -1)));
-    case 'salvar_lancamento': { const v = parseValor(d.valor); if (!(v > 0)) return Promise.reject(new Error('Valor inválido.')); D.lanc.push({ id: D.id(), data: d.data, tipo: d.tipo, valor: v, contaId: d.contaId, categoriaId: d.categoriaId || '', descricao: d.descricao || '' }); return ok({}); }
+    case 'salvar_lancamento': { const v = parseValor(d.valor); if (!(v > 0)) return Promise.reject(new Error('Valor inválido.')); D.lanc.push({ id: D.id(), data: d.data, tipo: d.tipo, valor: v, contaId: d.contaId, categoriaId: d.categoriaId || '', descricao: d.descricao || '', tags: String(d.tags || '').split(',').map(t => t.trim().replace(/^#+/, '')).filter(Boolean).slice(0, 8) }); return ok({}); }
     case 'excluir_lancamento': D.lanc.splice(D.lanc.findIndex(l => l.id === d.id), 1); return ok({});
     case 'importar_lancamentos': d.linhas.forEach(l => D.lanc.push({ id: D.id(), data: l.data, tipo: l.tipo, valor: l.valor, contaId: d.contaId, categoriaId: '', descricao: l.descricao })); return ok({ importadas: d.linhas.length, ignoradas: 0, invalidas: [] });
     case 'listar_orcamentos': return ok(D.orcs.filter(o => o.mes === d.mes));
@@ -552,8 +569,25 @@ function demo(acao, d) {
     case 'excluir_meta': D.metas.splice(D.metas.findIndex(m => m.id === d.id), 1); return ok({});
     case 'salvar_conta': D.contas.push({ id: D.id(), nome: d.nome, tipo: d.tipo, saldoInicial: parseValor(d.saldoInicial) || 0 }); return ok({});
     case 'excluir_conta': if (movs().some(l => l.contaId === d.id)) return Promise.reject(new Error('A conta tem lançamentos. Apague-os antes.')); D.contas.splice(D.contas.findIndex(c => c.id === d.id), 1); return ok({});
-    case 'salvar_categoria': D.cats.push({ id: D.id(), nome: d.nome, tipo: d.tipo, cor: d.cor }); return ok({});
-    case 'excluir_categoria': if (movs().some(l => l.categoriaId === d.id)) return Promise.reject(new Error('A categoria está em uso.')); D.cats.splice(D.cats.findIndex(c => c.id === d.id), 1); return ok({});
+    case 'salvar_categoria': {
+      const nome = String(d.nome || '').trim(); if (!nome) return Promise.reject(new Error('Informe o nome da categoria.'));
+      if (D.cats.some(c => c.id !== d.id && c.tipo === d.tipo && c.nome.toLowerCase() === nome.toLowerCase())) return Promise.reject(Object.assign(new Error('Já existe uma categoria de ' + d.tipo + ' com esse nome.'), { codigo: 'duplicada' }));
+      const c = D.cats.find(x => x.id === d.id);
+      if (c) Object.assign(c, { nome, tipo: d.tipo, cor: d.cor, icone: d.icone || c.icone }); else D.cats.push({ id: D.id(), nome, tipo: d.tipo, cor: d.cor, icone: d.icone || '🏷️', arquivada: false });
+      return ok({});
+    }
+    case 'arquivar_categoria': { const c = D.cats.find(x => x.id === d.id); if (c) c.arquivada = d.arquivada !== false; return ok(c || {}); }
+    case 'excluir_categoria': {
+      const n = movs().filter(l => l.categoriaId === d.id).length, no = D.orcs.filter(o => o.categoriaId === d.id).length;
+      if (n || no) {
+        if (!d.reatribuirPara) return Promise.reject(Object.assign(new Error('A categoria tem ' + n + ' lançamento(s) e ' + no + ' orçamento(s). Escolha outra categoria para receber esses itens.'), { codigo: 'em_uso' }));
+        movs().forEach(l => { if (l.categoriaId === d.id) l.categoriaId = d.reatribuirPara; });
+        D.orcs.forEach(o => { if (o.categoriaId === d.id) o.categoriaId = d.reatribuirPara; });
+      }
+      D.cats.splice(D.cats.findIndex(c => c.id === d.id), 1); return ok({ reatribuidos: n });
+    }
+    case 'restaurar_categorias_padrao': return ok({ adicionadas: 0, nomes: [] });
+    case 'listar_tags': { const m = {}; movs().forEach(l => (l.tags || []).forEach(t => { m[t.toLowerCase()] = m[t.toLowerCase()] || { tag: t, total: 0 }; m[t.toLowerCase()].total++; })); return ok(Object.values(m)); }
     case 'resumo': return ok(resumo(d.mes));
     case 'exportar_dados': return ok({ Contas: D.contas, Categorias: D.cats, Lancamentos: D.lanc, Orcamentos: D.orcs, Metas: D.metas });
     case 'apagar_conta_usuario': return ok({ apagado: true });
@@ -714,13 +748,40 @@ async function vOpcoes(raiz) {
       el('div', { class: 'opts-foot' }, restaurar))));
 }
 
+
+/* planos: valores vêm de config.js (editável); anual = total por ano */
+function planosSecao() {
+  const cfg = (window.RUMO_CONFIG || {}).PLANOS || [];
+  if (!cfg.length) return '';
+  let anual = false;
+  const grade = el('div', { class: 'planos-grade' });
+  const bM = el('button', { type: 'button', class: 'on' }, 'Mensal'), bA = el('button', { type: 'button' }, 'Anual');
+  const desenha = () => {
+    bM.className = anual ? '' : 'on'; bA.className = anual ? 'on' : '';
+    grade.replaceChildren(...cfg.map(p => {
+      const preco = anual ? p.anual : p.mensal, free = !p.mensal && !p.anual;
+      const eq = anual && p.anual ? p.anual / 12 : 0, eco = p.mensal * 12 - p.anual;
+      return el('div', { class: 'card glass plano' + (p.destaque ? ' destaque' : '') },
+        el('h3', null, p.nome, p.atual ? el('span', { class: 'chip', style: 'margin-left:8px' }, 'Seu plano') : ''),
+        el('div', { class: 'preco' }, free ? 'R$ 0' : brl(preco), free ? '' : el('small', null, anual ? ' /ano' : ' /mês')),
+        el('div', { class: 'small mute' }, anual && !free ? 'equivale a ' + brl(eq) + '/mês' + (eco > 0 ? ' · economia de ' + brl(eco) + ' no ano' : '') : ' '),
+        el('ul', null, p.itens.map(i => el('li', null, i))),
+        p.exemplo ? el('div', { class: 'small aviso-ex' }, 'Valor de exemplo — ainda não definido.') : '');
+    }));
+  };
+  bM.onclick = () => { anual = false; desenha(); }; bA.onclick = () => { anual = true; desenha(); };
+  desenha();
+  return el('section', { class: 'planos', 'aria-label': 'Planos' }, el('h2', null, 'Planos'), el('div', { class: 'seg' }, bM, bA), grade,
+    el('p', { class: 'small mute' }, 'Por enquanto todos usam o plano Grátis. A cobrança ainda não está ativa.'));
+}
+
 async function vJornada(raiz) {
   const spacer = el('div', { class: 'jspacer' }), lista = el('div', { class: 'jlista' });
-  raiz.append(el('div', { class: 'jornada' }, spacer, lista));
+  raiz.append(el('div', { class: 'jornada' }, spacer, lista, planosSecao()));
   CB.call('enterJourney', spacer, lista);
   Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes }).catch(() => null)]).then(([r, c]) => CB.call('setData', r, c)).catch(() => { /* cartões ficam sem números */ });
 }
-const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cons: vCons };
+const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, cons: vCons };
 
 async function vPainel(raiz) {
   const [res, con] = await Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes })]);
@@ -755,7 +816,9 @@ async function vLanc(raiz) {
   const data = el('input', { type: 'date', value: dataPadrao, required: true });
   const conta = selecao(S.contas.map(c => ({ v: c.id, t: c.nome })));
   const cat = el('select'), desc = el('input', { maxlength: '120', placeholder: 'Ex.: Mercado', autocomplete: 'off' });
-  const atualizaCats = () => cat.replaceChildren(el('option', { value: '' }, 'Sem categoria'), ...S.cats.filter(c => c.tipo === tipo).map(c => el('option', { value: c.id }, c.nome)));
+  const tagsIn = el('input', { maxlength: '120', placeholder: 'Ex.: viagem, trabalho', autocomplete: 'off', list: 'dl-tags', 'aria-label': 'Tags' });
+  const dl = el('datalist', { id: 'dl-tags' }); api('listar_tags').then(t => dl.append(...t.slice(0, 30).map(x => el('option', { value: x.tag })))).catch(() => {});
+  const atualizaCats = () => cat.replaceChildren(el('option', { value: '' }, 'Sem categoria'), ...S.cats.filter(c => c.tipo === tipo && !c.arquivada).map(c => el('option', { value: c.id }, (c.icone || '') + ' ' + c.nome)));
   atualizaCats();
   const bDesp = el('button', { type: 'button', class: 'on out' }, 'Despesa'), bRec = el('button', { type: 'button' }, 'Receita');
   const troca = t => { tipo = t; bDesp.className = t === 'despesa' ? 'on out' : ''; bRec.className = t === 'receita' ? 'on' : ''; atualizaCats(); };
@@ -763,17 +826,18 @@ async function vLanc(raiz) {
   const form = el('form', { class: 'f', onsubmit: tentar(async () => {
     const v = parseValor(valor.value);
     if (!(v > 0)) throw new Error('Informe um valor maior que zero.');
-    await api('salvar_lancamento', { tipo, valor: v, data: data.value, contaId: conta.value, categoriaId: cat.value, descricao: desc.value });
+    await api('salvar_lancamento', { tipo, valor: v, data: data.value, contaId: conta.value, categoriaId: cat.value, descricao: desc.value, tags: tagsIn.value });
     toast('Lançamento salvo.', 'ok'); await ir('lanc');
   }) }, el('div', { class: 'campo' }, el('span', null, 'Tipo'), el('div', { class: 'seg' }, bDesp, bRec)),
-    campo('Valor (R$)', valor), campo('Data', data), campo('Conta', conta), campo('Categoria', cat), campo('Descrição', desc),
+    campo('Valor (R$)', valor), campo('Data', data), campo('Conta', conta), campo('Categoria', cat), campo('Descrição', desc), campo('Tags (separe por vírgula)', tagsIn), dl,
     el('button', { class: 'btn', type: 'submit' }, 'Salvar'));
 
   const nomeCat = id => (S.cats.find(c => c.id === id) || {}).nome || 'Sem categoria';
   const nomeConta = id => (S.contas.find(c => c.id === id) || {}).nome || '';
   const itens = lista.length ? lista.map((l, i) => el('div', { class: 'item', style: '--i:' + Math.min(i, 20) },
     el('i', { class: 'dot', style: 'color:' + corDe(l.categoriaId, 0) + ';background:' + corDe(l.categoriaId, 0) }),
-    el('div', { class: 't' }, el('b', null, l.descricao || nomeCat(l.categoriaId)), el('span', { class: 'small mute' }, dataBR(l.data) + ' · ' + nomeCat(l.categoriaId) + ' · ' + nomeConta(l.contaId))),
+    el('div', { class: 't' }, el('b', null, l.descricao || nomeCat(l.categoriaId)), el('span', { class: 'small mute' }, dataBR(l.data) + ' · ' + nomeCat(l.categoriaId) + ' · ' + nomeConta(l.contaId)),
+      (l.tags && l.tags.length) ? el('span', { class: 'tags' }, l.tags.map(t => el('em', null, '#' + t))) : ''),
     el('span', { class: 'v ' + (l.tipo === 'receita' ? 'pos' : 'neg') }, (l.tipo === 'receita' ? '+ ' : '− ') + brl(l.valor)),
     el('button', { class: 'x', 'aria-label': 'Excluir lançamento', onclick: tentar(async () => { if (!confirm('Excluir este lançamento?')) return; await api('excluir_lancamento', { id: l.id }); toast('Lançamento excluído.'); await ir('lanc'); }) }, '×')))
     : [el('div', { class: 'vazio' }, 'Nenhum lançamento em ', mesNome(S.mes, true), '.')];
@@ -875,15 +939,74 @@ async function vContas(raiz) {
     el('div', { class: 't' }, el('b', null, c.nome), el('span', { class: 'small mute' }, c.tipo)),
     el('span', { class: 'v ' + (c.saldo >= 0 ? '' : 'neg') }, brl(c.saldo)),
     el('button', { class: 'x', 'aria-label': 'Excluir conta', onclick: tentar(async () => { if (!confirm('Excluir a conta "' + c.nome + '"?')) return; await api('excluir_conta', { id: c.id }); await ir('contas'); }) }, '×'))));
-  const cn = el('input', { required: true, maxlength: '40', placeholder: 'Ex.: Pets', autocomplete: 'off' });
-  const ct = selecao([{ v: 'despesa', t: 'Despesa' }, { v: 'receita', t: 'Receita' }]);
-  const cc = el('input', { type: 'color', value: '#8B5CF6', 'aria-label': 'Cor' });
-  const formK = el('form', { class: 'f', onsubmit: tentar(async () => { await api('salvar_categoria', { nome: cn.value, tipo: ct.value, cor: cc.value }); toast('Categoria criada.', 'ok'); await ir('contas'); }) },
-    campo('Nova categoria', cn), campo('Tipo', ct), campo('Cor', cc), el('button', { class: 'btn', type: 'submit' }, 'Adicionar categoria'));
-  const chips = el('div', { class: 'chips', style: 'margin-top:14px' }, S.cats.map(c => el('span', { class: 'chip' }, el('i', { class: 'dot', style: 'color:' + c.cor + ';background:' + c.cor }), c.nome + (c.tipo === 'receita' ? ' (receita)' : ''),
-    el('button', { 'aria-label': 'Excluir categoria ' + c.nome, onclick: tentar(async () => { if (!confirm('Excluir a categoria "' + c.nome + '"?')) return; await api('excluir_categoria', { id: c.id }); await ir('contas'); }) }, '×'))));
   raiz.replaceChildren(el('div', { class: 'grid g-eq' }, el('div', { class: 'card glass reveal' }, el('h3', null, 'Minhas contas'), lista, el('div', { style: 'margin-top:14px' }, formC)),
-    el('div', { class: 'card glass reveal' }, el('h3', null, 'Categorias'), formK, chips)));
+    el('div', { class: 'card glass reveal' }, el('h3', null, 'Categorias'), el('p', { class: 'mute' }, 'Criar, editar, arquivar e excluir categorias agora fica na aba própria.'),
+      el('button', { class: 'btn', type: 'button', onclick: () => ir('cats') }, 'Gerenciar categorias'))));
+}
+
+
+/* ======================= categorias (CRUD completo) ======================= */
+const ICONES = ['🍽️','🛒','🍔','🏠','🔑','💡','🛍️','👕','💅','💳','🎓','👨‍👩‍👧','🧾','📈','🎮','🐾','🎁','🩺','💼','🚌','🔧','✈️','🔁','🛡️','📦','💰','📊','🤝','➕','🏋️','☕','📱','🎬','🎵','📚','🚗','⛽','🏦','🧸','🌳'];
+async function vCats(raiz) {
+  S.cats = await api('listar_categorias');
+  let tipoVista = 'despesa', editando = null, verArq = false;
+  const corpo = el('div'), formBox = el('div');
+  const desenha = () => {
+    const todas = S.cats.filter(c => c.tipo === tipoVista);
+    const ativas = todas.filter(c => !c.arquivada), arq = todas.filter(c => c.arquivada);
+    const linha = (c, i) => el('div', { class: 'item' + (c.arquivada ? ' arq' : ''), style: '--i:' + Math.min(i, 20) },
+      el('span', { class: 'cat-ico', style: 'background:' + c.cor + '33;border-color:' + c.cor, 'aria-hidden': 'true' }, c.icone),
+      el('div', { class: 't' }, el('b', null, c.nome), el('span', { class: 'small mute' }, c.arquivada ? 'Arquivada' : (c.tipo === 'receita' ? 'Receita' : 'Despesa'))),
+      el('button', { class: 'btn ghost mini', type: 'button', onclick: () => { editando = c; form(); scrollTo({ top: 0, behavior: reduz ? 'auto' : 'smooth' }); } }, 'Editar'),
+      el('button', { class: 'btn ghost mini', type: 'button', onclick: tentar(async () => { await api('arquivar_categoria', { id: c.id, arquivada: !!c.arquivada ? false : true }); toast(c.arquivada ? 'Categoria reativada.' : 'Categoria arquivada.', 'ok'); await ir('cats'); }) }, c.arquivada ? 'Reativar' : 'Arquivar'),
+      el('button', { class: 'x', 'aria-label': 'Excluir categoria ' + c.nome, onclick: tentar(() => excluir(c)) }, '×'));
+    corpo.replaceChildren(
+      el('div', { class: 'lista' }, ativas.length ? ativas.map(linha) : [el('div', { class: 'vazio' }, 'Nenhuma categoria de ' + (tipoVista === 'receita' ? 'receita' : 'despesa') + '.')]),
+      arq.length ? el('div', { style: 'margin-top:14px' }, el('button', { class: 'btn ghost mini', type: 'button', onclick: () => { verArq = !verArq; desenha(); } }, (verArq ? 'Ocultar' : 'Ver') + ' arquivadas (' + arq.length + ')'),
+        verArq ? el('div', { class: 'lista', style: 'margin-top:10px' }, arq.map(linha)) : '') : '');
+  };
+  async function excluir(c) {
+    try {
+      if (!confirm('Excluir a categoria "' + c.nome + '"?')) return;
+      await api('excluir_categoria', { id: c.id }); toast('Categoria excluída.'); await ir('cats');
+    } catch (e) {
+      if (e.codigo !== 'em_uso') throw e;
+      // tem lançamentos/orçamentos: oferece mover para outra categoria do mesmo tipo
+      const outras = S.cats.filter(x => x.id !== c.id && x.tipo === c.tipo && !x.arquivada);
+      if (!outras.length) throw new Error('Crie outra categoria do mesmo tipo para receber os lançamentos.');
+      const sel = selecao(outras.map(x => ({ v: x.id, t: x.icone + ' ' + x.nome })));
+      const caixa = el('div', { class: 'card glass reveal', role: 'alert' }, el('h3', null, 'Não dá para excluir ainda'), el('p', { class: 'mute' }, e.message),
+        el('form', { class: 'f', onsubmit: tentar(async ev => { ev.preventDefault(); await api('excluir_categoria', { id: c.id, reatribuirPara: sel.value }); toast('Itens movidos e categoria excluída.', 'ok'); await ir('cats'); }) },
+          campo('Mover para', sel), el('button', { class: 'btn', type: 'submit' }, 'Mover e excluir'),
+          el('button', { class: 'btn ghost', type: 'button', onclick: () => caixa.remove() }, 'Cancelar')));
+      formBox.prepend(caixa); caixa.scrollIntoView({ block: 'center', behavior: reduz ? 'auto' : 'smooth' });
+    }
+  }
+  const form = () => {
+    const c = editando;
+    const nome = el('input', { required: true, maxlength: '40', placeholder: 'Ex.: Pets', autocomplete: 'off', value: c ? c.nome : '' });
+    const tp = selecao([{ v: 'despesa', t: 'Despesa' }, { v: 'receita', t: 'Receita' }], c ? c.tipo : tipoVista);
+    const cor = el('input', { type: 'color', value: c ? c.cor : '#8B5CF6', 'aria-label': 'Cor' });
+    let ic = c ? c.icone : '🏷️';
+    const prev = el('span', { class: 'cat-ico grande' }, ic);
+    const grade = el('div', { class: 'ico-grade', role: 'listbox', 'aria-label': 'Ícone' }, ICONES.map(i => el('button', { type: 'button', class: i === ic ? 'on' : '', 'aria-label': 'Ícone ' + i, onclick: ev => { ic = i; prev.textContent = i; grade.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === ev.currentTarget)); } }, i)));
+    formBox.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, c ? 'Editar categoria' : 'Nova categoria'),
+      el('form', { class: 'f', onsubmit: tentar(async () => {
+        await api('salvar_categoria', { id: c ? c.id : '', nome: nome.value, tipo: tp.value, cor: cor.value, icone: ic });
+        toast(c ? 'Categoria atualizada.' : 'Categoria criada.', 'ok'); await ir('cats');
+      }) }, campo('Nome', nome), campo('Tipo', tp), campo('Cor', cor), el('div', { class: 'campo' }, el('span', null, 'Ícone'), prev),
+        el('div', { style: 'grid-column:1/-1' }, grade),
+        el('div', { style: 'display:flex;gap:8px;grid-column:1/-1;flex-wrap:wrap' }, el('button', { class: 'btn', type: 'submit' }, c ? 'Salvar alterações' : 'Adicionar categoria'),
+          c ? el('button', { class: 'btn ghost', type: 'button', onclick: () => { editando = null; form(); } }, 'Cancelar edição') : ''))));
+  };
+  const bD = el('button', { type: 'button', class: 'on out' }, 'Despesas'), bR = el('button', { type: 'button' }, 'Receitas');
+  const troca = t => { tipoVista = t; bD.className = t === 'despesa' ? 'on out' : ''; bR.className = t === 'receita' ? 'on' : ''; desenha(); };
+  bD.onclick = () => troca('despesa'); bR.onclick = () => troca('receita');
+  const rest = el('button', { class: 'btn ghost', type: 'button', onclick: tentar(async () => { const r = await api('restaurar_categorias_padrao'); toast(r.adicionadas ? r.adicionadas + ' categoria(s) padrão adicionada(s).' : 'Você já tem todas as categorias padrão.', 'ok'); if (r.adicionadas) await ir('cats'); }) }, 'Adicionar categorias padrão que faltam');
+  form(); desenha();
+  raiz.replaceChildren(formBox,
+    el('div', { class: 'card glass reveal' }, el('h3', null, 'Minhas categorias'), el('div', { class: 'seg', style: 'margin-bottom:12px' }, bD, bR), corpo,
+      el('div', { style: 'margin-top:16px' }, rest)));
 }
 
 async function vCons(raiz) {

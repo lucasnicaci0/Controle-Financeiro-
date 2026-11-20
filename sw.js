@@ -1,6 +1,6 @@
 // Service worker do Rumo: rede primeiro (atualizações chegam sozinhas), cache só como reserva offline.
-const VERSAO = 'rumo-v3';
-const ARQUIVOS = ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png',
+const VERSAO = 'rumo-v4';
+const ARQUIVOS = ['./', './index.html', './config.js', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png',
   './css/cerebro.css', './js/cerebro/index.js', './js/cerebro/theme.js', './js/cerebro/math.js', './js/cerebro/gl.js', './js/cerebro/regions.js',
   './js/cerebro/shaders.js', './js/cerebro/brain.js', './js/cerebro/post.js', './js/cerebro/camera.js', './js/cerebro/scene.js', './js/cerebro/cards.js', './js/cerebro/cursor.js'];
 

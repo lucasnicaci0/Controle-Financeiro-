@@ -24,6 +24,7 @@ function novaPlanilha() {
       _data: data,
       getLastRow() { for (let i = data.length - 1; i >= 0; i--) if (data[i] && data[i].some(v => v !== '' && v !== undefined)) return i + 1; return 0; },
       getMaxRows() { return 1000; },
+      getLastColumn() { return data[0] ? data[0].length : 0; },
       setFrozenRows() {},
       deleteRow(n) { data.splice(n - 1, 1); },
       getRange(r, c, nr, nc) {
@@ -117,7 +118,7 @@ function mesRel(k) { const p = mesAtual.split('-').map(Number); const d = new Da
   ctx.autorizar();
   confere('autorizar cria as 7 abas', Object.keys(ctx._planilha._abas).sort().join(',') === 'Categorias,Consultor,Contas,Lancamentos,Metas,Orcamentos,Usuarios', Object.keys(ctx._planilha._abas));
   const catsA = chamar(ctx, 'listar_categorias', A, {}).dados;
-  confere('categorias padrão (10)', catsA.length === 10);
+  confere('categorias padrão (29 = 24 de despesa + 5 de receita)', catsA.length === 29);
   const contasA = chamar(ctx, 'listar_contas', A, {}).dados;
   confere('conta Carteira criada', contasA.length === 1 && contasA[0].nome === 'Carteira');
   const nomeCat = n => catsA.find(c => c.nome === n).id;
@@ -169,8 +170,8 @@ function mesRel(k) { const p = mesAtual.split('-').map(Number); const d = new Da
   chamar(ctx, 'salvar_meta', A, { nome: 'Notebook', valorAlvo: 4000, valorAtual: 0, prazo: mesRel(6) + '-15' });
   // histórico: Netflix em 3 meses anteriores
   [1, 2, 3].forEach(k => chamar(ctx, 'salvar_lancamento', A, { data: d1(mesRel(-k), 10), tipo: 'despesa', valor: 39.9, contaId: cc.id, categoriaId: nomeCat('Assinaturas'), descricao: 'Netflix' }));
-  chamar(ctx, 'salvar_lancamento', A, { data: d1(mesRel(-1), 12), tipo: 'despesa', valor: 900, contaId: cc.id, categoriaId: nomeCat('Moradia'), descricao: 'Aluguel' });
-  chamar(ctx, 'salvar_lancamento', A, { data: primeiro, tipo: 'despesa', valor: 2800, contaId: cc.id, categoriaId: nomeCat('Moradia'), descricao: 'Aluguel e contas' });
+  chamar(ctx, 'salvar_lancamento', A, { data: d1(mesRel(-1), 12), tipo: 'despesa', valor: 900, contaId: cc.id, categoriaId: nomeCat('Moradia/Aluguel'), descricao: 'Aluguel' });
+  chamar(ctx, 'salvar_lancamento', A, { data: primeiro, tipo: 'despesa', valor: 2800, contaId: cc.id, categoriaId: nomeCat('Moradia/Aluguel'), descricao: 'Aluguel e contas' });
   const con = chamar(ctx, 'consultor', A, { mes: mesAtual }).dados;
   const titulos = con.dicas.map(x => x.titulo).join(' | ');
   confere('alerta de gastos acima da renda', con.dicas.some(x => x.nivel === 'alerta' && x.titulo === 'Gastos acima da renda'), titulos);
@@ -184,11 +185,11 @@ function mesRel(k) { const p = mesAtual.split('-').map(Number); const d = new Da
   const res = chamar(ctx, 'resumo', A, { mes: mesAtual }).dados;
   confere('resumo: receitas', res.receitas === 3000, res);
   confere('resumo: série de 6 meses', res.serie.length === 6);
-  confere('resumo: categoria líder é Moradia', res.porCategoria[0].nome === 'Moradia', res.porCategoria);
+  confere('resumo: categoria líder é Moradia/Aluguel', res.porCategoria[0].nome === 'Moradia/Aluguel', res.porCategoria);
   const sc = chamar(ctx, 'listar_contas', A, {}).dados.find(c => c.id === cc.id).saldo;
   confere('saldo da conta (1000,50 + 3000 - despesas)', Math.abs(sc - (1000.5 + 3000 - 250 - 25 - 39.9 * 3 - 900 - 2800)) < 0.01, sc);
   confere('conta em uso não exclui', chamar(ctx, 'excluir_conta', A, { id: cc.id }).erro === 'em_uso');
-  confere('categoria em uso não exclui', chamar(ctx, 'excluir_categoria', A, { id: nomeCat('Moradia') }).erro === 'em_uso');
+  confere('categoria em uso não exclui', chamar(ctx, 'excluir_categoria', A, { id: nomeCat('Moradia/Aluguel') }).erro === 'em_uso');
 
   console.log('LGPD');
   const exp = chamar(ctx, 'exportar_dados', A, {}).dados;

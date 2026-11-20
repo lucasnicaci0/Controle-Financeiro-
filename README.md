@@ -50,3 +50,13 @@ O canvas respeita o `devicePixelRatio` (limite 1,5x / 2x / 3x conforme a GPU), o
 ### Atalhos
 
 `Esc` ou clicar em **RUMO** voltam à tela inicial (a Jornada). Se houver menu aberto, o `Esc` fecha o menu primeiro.
+
+## Fase 1 — Categorias, tags e planos (v1.1.0)
+
+- **config.js** (novo, editável): `PLANOS` (preço mensal e anual; `exemplo: true` mostra o aviso "Valor de exemplo"), `CONTATO` e, opcionalmente, `API_URL`/`CLIENT_ID`. Só dados públicos; segredos ficam em *Propriedades do script* no Apps Script.
+- **Categorias** (aba nova): criar, editar, arquivar/reativar e excluir, com ícone e cor, tipos Despesa/Receita. Categoria com lançamentos ou orçamentos **não é excluída**: o app oferece mover tudo para outra categoria do mesmo tipo. Botão "Adicionar categorias padrão que faltam" para quem já usava o app.
+- **Tags** nos lançamentos (até 8, sem repetir, sugestões das já usadas).
+- **Planos** na Jornada (rolar até o fim): alternância Mensal/Anual com economia calculada.
+- Planilhas antigas ganham as colunas novas sozinhas (migração automática).
+- **Atenção:** após atualizar o `Code.gs`, publique uma **nova versão** da implantação.
+- Testes: `node apps-script/teste_gs1.js`, `node apps-script/teste_gs2.js`, `node apps-script/teste_fase1_ui.js` (precisa de Playwright).
