@@ -12,6 +12,10 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>
 <script src="js/xlsx.js" defer></script>
+<script src="js/servicos/assistente.js" defer></script>
+<script src="js/servicos/conexao-bancaria.js" defer></script>
+<script src="js/servicos/notificacoes.js" defer></script>
+<script src="js/servicos/whatsapp.js" defer></script>
 <style>
 :root{
   --bg:#05020A; --ink:#F5F3FF; --mute:#b2a3ee; --line:rgba(167,139,250,.2);
@@ -125,6 +129,10 @@ dialog.crop{margin:auto;padding:20px;color:var(--ink);max-width:min(360px,94vw)}
 .faq details{border-bottom:1px solid var(--line);padding:10px 0}.faq summary{cursor:pointer;font-weight:600}.faq details p{margin:8px 0 0;color:var(--mute)}
 textarea{width:100%;padding:11px 13px;border-radius:var(--rb,13px);border:1px solid var(--line);background:rgba(11,6,24,.6);font:inherit;color:inherit;resize:vertical}
 html[data-tema=claro] body.in-app textarea{background:#fff;color:var(--ink)}
+button.chip{color:inherit;border:1px solid var(--line);cursor:pointer;font:inherit;font-size:.85rem}
+.consent{border:1px solid var(--line);border-radius:var(--rb,13px);padding:12px 14px;margin:10px 0}.consent li{margin:6px 0}.check{display:flex;gap:8px;align-items:flex-start;cursor:pointer}.check input{margin-top:3px}
+.chat{display:flex;flex-direction:column;gap:10px;max-height:52vh;min-height:180px;overflow:auto;padding:4px 2px;margin-bottom:10px}.msg{max-width:88%;padding:10px 13px;border-radius:14px;border:1px solid var(--line);white-space:pre-wrap}.msg.usuario{align-self:flex-end;background:rgba(139,92,246,.28)}.msg.assistente{align-self:flex-start;background:rgba(255,255,255,.06)}.msg.pensando{opacity:.6}
+.sugestoes{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}.chat-form{display:flex;gap:8px}.chat-form input{flex:1}
 .cb-wrap{position:relative}.cb-sug{list-style:none;margin:6px 0 0;padding:6px;position:absolute;left:0;right:0;z-index:30;background:var(--bg);border:1px solid var(--line);border-radius:var(--rb,13px);box-shadow:0 14px 40px rgba(0,0,0,.4);max-height:300px;overflow:auto}
 .cb-sug li{padding:10px 12px;border-radius:10px;cursor:pointer}.cb-sug li.on,.cb-sug li:hover{background:rgba(139,92,246,.28)}
 .cb-favs{margin:16px 0}.cb-fav{display:flex;flex-direction:column;gap:2px;text-align:left;cursor:pointer;color:inherit;font:inherit}.cb-fav.on{outline:2px solid var(--a)}.cb-fav b{font-size:1.1rem}.cb-v{font-size:1.25rem;font-weight:700}
@@ -302,6 +310,8 @@ body.in-app #scrim{opacity:1}
         <button data-v="invest">Investimentos</button>
         <button data-v="agenda">Agenda</button>
         <button data-v="limites">Limites</button>
+        <button data-v="conexoes">Conexões</button>
+        <button data-v="assistente">Assistente</button>
         <button data-v="cons">Consultor</button>
         <button data-v="opcoes">Opções</button>
       </nav>
@@ -578,7 +588,7 @@ const demoDB = (() => {
   });
   const orcs = [{ id: id(), categoriaId: cat('Alimentação'), mes: mesAtual(), limite: 620 }, { id: id(), categoriaId: cat('Lazer'), mes: mesAtual(), limite: 300 }];
   const metas = [{ id: id(), nome: 'Viagem de férias', valorAlvo: 6000, valorAtual: 2200, prazo: somarMes(mesAtual(), 8) + '-15' }, { id: id(), nome: 'Reserva de emergência', valorAlvo: 15000, valorAtual: 3000, prazo: '' }];
-  return { id, cats, contas, lanc, orcs, metas, agenda: [], limites: [], alertas: [], ativos: [], cambioFav: ['USD', 'EUR', 'GBP', 'ARS', 'BTC'], cambioAlertas: [], msgs: [], perfil: { nome: 'Visitante', apelido: '', nascimento: '', foto: '' } };
+  return { id, cats, contas, lanc, orcs, metas, agenda: [], limites: [], alertas: [], ativos: [], conexoes: [], cambioFav: ['USD', 'EUR', 'GBP', 'ARS', 'BTC'], cambioAlertas: [], msgs: [], perfil: { nome: 'Visitante', apelido: '', nascimento: '', foto: '' } };
 })();
 
 
@@ -758,6 +768,16 @@ function demo(acao, d) {
       const novos = []; D.cambioAlertas.filter(a => a.ativo).forEach(a => { const compra = ({ USD: 5.42, EUR: 6.25, GBP: 7.2 })[a.moeda] || 0; if (compra && (a.direcao === 'acima' ? compra >= a.valor : compra <= a.valor)) { a.ativo = false; const al = { id: D.id(), mes: mesAtual(), limiteId: a.id, nivel: 'cambio', gasto: compra, limite: a.valor, criado: new Date().toISOString().slice(0, 19), enviado: '', mensagem: 'Cotação: ' + a.moeda + ' ' + (a.direcao === 'acima' ? 'subiu até ' : 'caiu até ') + brl(a.valor) + ' (agora ' + brl(compra) + ').' }; D.alertas.push(al); novos.push(al); } });
       return ok({ alertas: novos });
     }
+    case 'of_status': return ok({ configurado: true, provedor: 'Pluggy (demonstração)', consentimento: { versao: 'demo', texto: ['Você autoriza o Rumo a ler, por meio da Pluggy, contas, saldos e transações dos últimos 90 dias da conta que escolher.', 'Finalidade: importar seus lançamentos e saldos para você acompanhar suas finanças. Os dados não são vendidos nem compartilhados.', 'O Rumo não vê nem guarda a senha do seu banco. O login é feito na tela segura do provedor.', 'Você pode revogar quando quiser, em Conexões ▸ Desconectar.'] }, conexoes: D.conexoes.map(c => ({ id: c.id, banco: c.banco, status: 'ativa', consentimento: c.consentimento, ultimaSync: c.ultimaSync, contas: 1 })), aviso: '' });
+    case 'of_token': if (d.consentimento !== true) return Promise.reject(new Error('É preciso aceitar o consentimento para conectar.')); return ok({ connectToken: 'demo' });
+    case 'of_conectar': case 'of_sincronizar': {
+      const agora = new Date().toISOString().slice(0, 19); let con = D.conexoes.find(c => c.id === d.id), novas = 0;
+      if (!con) { con = { id: D.id(), banco: 'Banco Demo', consentimento: agora, ultimaSync: agora }; D.conexoes.push(con); const ct = { id: D.id(), nome: 'Banco Demo Conta Corrente', tipo: 'corrente', saldoInicial: 1200 }; D.contas.push(ct); con.contaId = ct.id; novas = 3;
+        [['Uber *Trip', 18.9, 'despesa'], ['Mercado Bom Preço', 132.4, 'despesa'], ['Salário', 4200, 'receita']].forEach((t, i) => D.lanc.push({ id: D.id(), data: hojeISO(), tipo: t[2], valor: t[1], contaId: ct.id, categoriaId: '', descricao: t[0], moeda: '', valorOrig: 0, cotacao: 0, tags: [], chave: 'of:demo' + i })); }
+      con.ultimaSync = agora;
+      return ok(d.itemId ? { conexao: {}, resultado: { importadas: novas, duplicadas: 0, ignoradas: 0, semCategoria: novas, alertas: [] } } : { importadas: 0, duplicadas: 0, ignoradas: 0, semCategoria: 0, alertas: [] });
+    }
+    case 'of_desconectar': { const i = D.conexoes.findIndex(c => c.id === d.id); const con = D.conexoes[i]; let rem = 0; if (con && d.removerDados) { const antes = D.lanc.length; D.lanc = D.lanc.filter(l => !(l.chave && l.chave.startsWith('of:') && l.contaId === con.contaId)); rem = antes - D.lanc.length; } if (i >= 0) D.conexoes.splice(i, 1); return ok({ desconectada: true, revogadaNoProvedor: true, lancamentosRemovidos: rem }); }
     case 'resumo': return ok(resumo(d.mes));
     case 'exportar_dados': return ok({ Contas: D.contas, Categorias: D.cats, Lancamentos: D.lanc, Orcamentos: D.orcs, Metas: D.metas });
     case 'apagar_conta_usuario': return ok({ apagado: true });
@@ -979,7 +999,7 @@ async function vJornada(raiz) {
   CB.call('enterJourney', spacer, lista);
   Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes }).catch(() => null)]).then(([r, c]) => CB.call('setData', r, c)).catch(() => { /* cartões ficam sem números */ });
 }
-const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, cambio: vCambio, perfil: vPerfil, ajuda: vAjuda, cartoes: vCartoes, invest: vInvest, agenda: vAgenda, limites: vLimites, cons: vCons };
+const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, conexoes: vConexoes, assistente: vAssistente, cambio: vCambio, perfil: vPerfil, ajuda: vAjuda, cartoes: vCartoes, invest: vInvest, agenda: vAgenda, limites: vLimites, cons: vCons };
 
 async function vPainel(raiz) {
   const [res, con] = await Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes })]);
@@ -1748,6 +1768,74 @@ function cardCambioPainel() {
   cotacoes(['USD', 'EUR']).then(r => corpo.replaceChildren(...['USD', 'EUR'].map(c => r.cot[c] ? el('div', { class: 'row', style: 'display:flex;justify-content:space-between;gap:8px' }, el('b', null, c), el('span', null, rs(r.cot[c].venda || r.cot[c].compra)),
     el('span', { class: 'small ' + (r.cot[c].pct >= 0 ? 'pos' : 'neg') }, (r.cot[c].pct >= 0 ? '▲ ' : '▼ ') + Math.abs(r.cot[c].pct).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%'), r.cot[c].desatualizado ? el('span', { class: 'small aviso-ex', title: 'cotação desatualizada' }, '⚠') : '') : el('div', { class: 'small mute' }, c + ': indisponível')), el('div', { class: 'small mute' }, 'Valores de referência.'))).catch(() => { corpo.textContent = 'Indisponível agora.'; });
   return card;
+}
+
+/* ======================= conexões bancárias (Open Finance) ======================= */
+const dataHoraBR = s => s ? String(s).slice(8, 10) + '/' + String(s).slice(5, 7) + '/' + String(s).slice(0, 4) + ' ' + String(s).slice(11, 16) : '—';
+async function vConexoes(raiz) {
+  const st = await api('of_status');
+  const aceite = el('input', { type: 'checkbox', id: 'of-aceite' }), btn = el('button', { class: 'btn', type: 'button', disabled: true }, 'Conectar meu banco');
+  aceite.onchange = () => { btn.disabled = !aceite.checked; };
+  const resumoTxt = r => r.importadas + ' lançamento(s) importado(s)' + (r.duplicadas ? ', ' + r.duplicadas + ' duplicado(s) evitado(s)' : '') + (r.semCategoria ? ', ' + r.semCategoria + ' sem categoria' : '') + '.';
+  const depois = async r => { S.contas = []; await carregarBase(); toast(resumoTxt(r), 'ok'); avisaAlertas(r.alertas); await ir('conexoes'); };
+  btn.onclick = tentar(async () => {
+    if (!aceite.checked) throw new Error('Aceite o consentimento para continuar.');
+    const t = await api('of_token', { consentimento: true });
+    const itemId = S.demo ? 'demo-item-' + Date.now() : await RumoBanco.abrir({ connectToken: t.connectToken, url: (window.RUMO_CONFIG || {}).PLUGGY_CONNECT_URL || 'https://cdn.pluggy.ai/pluggy-connect/v2.8.2/pluggy-connect.js' });
+    toast('Importando seus dados…');
+    const r = await api('of_conectar', { itemId, consentimento: true });
+    await depois(r.resultado);
+  });
+  const lista = st.conexoes.length ? st.conexoes.map(c => el('div', { class: 'item conexao' },
+    el('div', { class: 't' }, el('b', null, '🏦 ' + c.banco), el('span', { class: 'small mute' }, c.contas + ' conta(s) · última atualização ' + dataHoraBR(c.ultimaSync)), el('span', { class: 'small mute' }, 'Consentimento: ' + dataHoraBR(c.consentimento))),
+    el('button', { class: 'btn ghost mini', type: 'button', onclick: tentar(async () => { toast('Atualizando…'); await depois(await api('of_sincronizar', { id: c.id })); }) }, 'Atualizar agora'),
+    el('button', { class: 'btn ghost mini', type: 'button', onclick: tentar(async () => {
+      if (!confirm('Desconectar ' + c.banco + '? O acesso aos seus dados será encerrado.')) return;
+      const rem = confirm('Apagar também os lançamentos que vieram deste banco?\n\nOK = apagar · Cancelar = manter no Rumo');
+      const r = await api('of_desconectar', { id: c.id, removerDados: rem });
+      S.contas = []; await carregarBase(); toast('Desconectado' + (r.lancamentosRemovidos ? ' · ' + r.lancamentosRemovidos + ' lançamento(s) removido(s)' : '') + '.', 'ok'); await ir('conexoes');
+    }) }, 'Desconectar'))) : [el('div', { class: 'vazio' }, 'Nenhum banco conectado.')];
+  raiz.replaceChildren(
+    el('div', { class: 'card glass reveal' }, el('h3', null, 'Conexão bancária (Open Finance)'),
+      st.configurado || S.demo ? el('div') : el('div', { class: 'aviso-ex', role: 'status' }, 'Ainda não ativada neste app: o administrador precisa informar as credenciais do provedor (PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET) nas Propriedades do script. Veja o README.'),
+      S.demo ? el('div', { class: 'aviso-ex', role: 'status' }, 'Modo demonstração: a conexão é simulada com dados fictícios.') : '',
+      el('p', { class: 'mute' }, 'Importe contas, saldos e transações automaticamente, sem digitar nada. Provedor: ' + st.provedor + '.'),
+      el('div', { class: 'consent' }, el('h4', { style: 'margin:0 0 6px' }, 'Seu consentimento'), el('ul', { class: 'small' }, ...st.consentimento.texto.map(t => el('li', null, t)))),
+      el('label', { class: 'check', for: 'of-aceite' }, aceite, ' Li e aceito. Entendo que posso revogar quando quiser.'),
+      el('div', { style: 'margin-top:12px' }, btn)),
+    el('div', { class: 'card glass reveal' }, el('h3', null, 'Bancos conectados'), el('div', { class: 'lista' }, lista),
+      el('p', { class: 'small mute', style: 'margin:10px 0 0' }, 'Transações dos últimos 90 dias. Pagamento de fatura não é importado (evita contar duas vezes). Itens iguais aos que você já lançou à mão são ignorados. Categorias são sugeridas por regras; o que não for reconhecido fica "sem categoria" para você escolher.')),
+    el('div', { class: 'card glass reveal' }, el('h3', null, 'Em preparação'),
+      el('div', { class: 'lista' },
+        el('div', { class: 'item' }, el('div', { class: 't' }, el('b', null, '🔔 Leitura de notificações do banco'), el('span', { class: 'small mute' }, 'Exige um app Android nativo com permissão de "acesso a notificações". Não é possível só pelo site/PWA. Estrutura e documentação prontas (docs/notificacoes-android.md).')), el('span', { class: 'chip' }, 'Em breve')),
+        el('div', { class: 'item' }, el('div', { class: 't' }, el('b', null, '💬 Agente no WhatsApp'), el('span', { class: 'small mute' }, 'Lançar gastos por mensagem ("gastei 50 no mercado") pela API oficial do WhatsApp Business. Interfaces e documentação prontas (docs/whatsapp.md).')), el('span', { class: 'chip' }, 'Em breve')))));
+}
+
+/* ======================= assistente de IA (tela de chat; a lógica fica em js/servicos/assistente.js) ======================= */
+async function vAssistente(raiz) {
+  S.chat = S.chat || [];
+  const log = el('div', { class: 'chat', role: 'log', 'aria-live': 'polite', 'aria-label': 'Conversa com o assistente' });
+  const campoMsg = el('input', { type: 'text', maxlength: 500, placeholder: 'Pergunte: quanto gastei este mês?', autocomplete: 'off', 'aria-label': 'Mensagem para o assistente' });
+  const enviar = el('button', { class: 'btn', type: 'submit' }, 'Enviar');
+  const bolha = (papel, texto) => el('div', { class: 'msg ' + papel }, el('span', { class: 'small mute' }, papel === 'usuario' ? 'Você' : 'Assistente'), el('div', { class: 'txt' }, texto));
+  const desenha = () => { log.replaceChildren(...(S.chat.length ? S.chat.map(m => bolha(m.papel, m.texto)) : [bolha('assistente', 'Olá! Sou o assistente do Rumo. Posso consultar seu saldo, gastos do mês, limites, metas, últimos lançamentos e cotações. O que você quer saber?')])); log.scrollTop = log.scrollHeight; };
+  const perguntar = async texto => {
+    texto = String(texto || '').trim(); if (!texto) return;
+    S.chat.push({ papel: 'usuario', texto }); desenha(); campoMsg.value = ''; enviar.disabled = true;
+    const pensando = bolha('assistente', 'Pensando…'); pensando.classList.add('pensando'); log.append(pensando); log.scrollTop = log.scrollHeight;
+    try {
+      const r = await RumoAssistente.responder(texto, { api, historico: S.chat.slice(0, -1) });
+      S.chat.push({ papel: 'assistente', texto: r.texto });
+    } catch (e) { S.chat.push({ papel: 'assistente', texto: 'Não consegui responder agora: ' + (e.message || 'erro') }); }
+    enviar.disabled = false; desenha(); campoMsg.focus();
+  };
+  const sugestoes = ['Quanto gastei este mês?', 'Qual meu saldo?', 'Como estão meus limites?', 'Cotação do dólar', 'Últimos lançamentos'];
+  raiz.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, 'Assistente'),
+    el('p', { class: 'small mute', style: 'margin:0 0 10px' }, 'Modo simulado: responde com regras usando os seus dados reais, sem enviar nada a serviços de IA. Orientação educativa, não é recomendação de investimento.'),
+    log, el('div', { class: 'sugestoes' }, ...sugestoes.map(s => el('button', { type: 'button', class: 'chip', onclick: () => perguntar(s) }, s))),
+    el('form', { class: 'chat-form', onsubmit: ev => { ev.preventDefault(); perguntar(campoMsg.value); } }, campoMsg, enviar),
+    el('div', { style: 'margin-top:10px' }, el('button', { type: 'button', class: 'btn ghost mini', onclick: () => { S.chat = []; desenha(); } }, 'Limpar conversa'))));
+  desenha();
 }
 
 async function vCons(raiz) {

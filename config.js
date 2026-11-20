@@ -8,6 +8,10 @@ window.RUMO_CONFIG = {
   API_URL: '',
   CLIENT_ID: '',
 
+  // Open Finance (Pluggy Connect): endereço do script do widget. Confirme a versão atual na documentação da Pluggy
+  // (docs.pluggy.ai). Só é carregado depois que o usuário aceita o consentimento. NÃO coloque credenciais aqui.
+  PLUGGY_CONNECT_URL: 'https://cdn.pluggy.ai/pluggy-connect/v2.8.2/pluggy-connect.js',
+
   // Planos mostrados na Jornada. Preços em R$.
   // ⚠ VALORES DE EXEMPLO: troque pelos reais. Enquanto "exemplo: true", a tela mostra o aviso "valor de exemplo".
   // O plano anual é o preço TOTAL por ano (a tela calcula o equivalente mensal e a economia).

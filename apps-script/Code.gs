@@ -20,7 +20,7 @@
  * o que facilita trocar a planilha por outro banco no futuro.
  */
 
-var VERSAO = '1.5.0';
+var VERSAO = '1.6.0';
 
 var CONFIG = {
   CLIENT_ID: 'COLE_AQUI_O_ID_DO_CLIENTE_OAUTH',
@@ -54,11 +54,14 @@ var TABELAS = {
   Fotos:       ['Email', 'Foto', 'Atualizado'],
   Mensagens:   ['Id', 'Email', 'Assunto', 'Texto', 'Criado', 'Status'],
   // Câmbio
-  CambioAlertas: ['Id', 'Email', 'Moeda', 'Direcao', 'Valor', 'Ativo', 'Criado']
+  CambioAlertas: ['Id', 'Email', 'Moeda', 'Direcao', 'Valor', 'Ativo', 'Criado'],
+  // Fase 5: conexão bancária (só identificador da conexão e consentimento; nunca senha)
+  Conexoes:    ['Id', 'Email', 'ItemId', 'Banco', 'Status', 'Consentimento', 'UltimaSync', 'Criado'],
+  ContasBanco: ['Id', 'Email', 'ConexaoId', 'ExtId', 'ContaId']
 };
 
 // Colunas formatadas como texto: impedem que a planilha converta datas ou interprete fórmulas.
-var COLUNAS_TEXTO = ['Data', 'Mes', 'Prazo', 'Criado', 'UltimoAcesso', 'Nome', 'Descricao', 'Chave', 'Papel', 'Texto', 'Tags', 'Icone', 'Arquivada', 'Titulo', 'Fim', 'Concluidos', 'Token', 'Mensagem', 'Enviado', 'Escopo', 'AlvoId', 'Marca', 'Ticker', 'Classe', 'AtualizadoEm', 'Fonte', 'Apelido', 'Nascimento', 'Prefs', 'Foto', 'Atualizado', 'Assunto', 'Status', 'CambioFav', 'MoedaOrig', 'Moeda', 'Direcao', 'Ativo'];
+var COLUNAS_TEXTO = ['Data', 'Mes', 'Prazo', 'Criado', 'UltimoAcesso', 'Nome', 'Descricao', 'Chave', 'Papel', 'Texto', 'Tags', 'Icone', 'Arquivada', 'Titulo', 'Fim', 'Concluidos', 'Token', 'Mensagem', 'Enviado', 'Escopo', 'AlvoId', 'Marca', 'Ticker', 'Classe', 'AtualizadoEm', 'Fonte', 'Apelido', 'Nascimento', 'Prefs', 'Foto', 'Atualizado', 'Assunto', 'Status', 'CambioFav', 'MoedaOrig', 'Moeda', 'Direcao', 'Ativo', 'ItemId', 'Banco', 'Consentimento', 'UltimaSync', 'ConexaoId', 'ExtId', 'ContaId'];
 
 var TIPOS_CONTA = ['corrente', 'poupanca', 'reserva', 'investimento', 'dinheiro', 'cartao'];
 
@@ -867,7 +870,7 @@ var ACOES = {
     Object.keys(TABELAS).forEach(function (nome) {
       saida[nome] = doUsuario_(nome, u.email).map(function (r) {
         var o = {};
-        TABELAS[nome].forEach(function (c) { if (c !== 'Email') o[c] = r[c]; });
+        TABELAS[nome].forEach(function (c) { if (c !== 'Email' && c !== 'ItemId') o[c] = r[c]; });
         return o;
       });
     });
@@ -875,6 +878,7 @@ var ACOES = {
   },
   apagar_conta_usuario: function (u, d) {
     if (d.confirmar !== 'APAGAR') throw erro_('confirmacao', 'Envie confirmar: "APAGAR".');
+    doUsuario_('Conexoes', u.email).forEach(function (c) { ofRevogar_(c.ItemId); });   // LGPD: encerra as conexões bancárias no provedor
     Object.keys(TABELAS).forEach(function (nome) {
       var restantes = ler_(nome).filter(function (r) { return String(r.Email).toLowerCase() !== u.email; });
       reescrever_(nome, restantes);
@@ -1338,6 +1342,195 @@ function consultor_(email, mes) {
   dicas.sort(function (a, b) { return ordem[a.nivel] - ordem[b.nivel]; });
   return { mes: mes, receitas: rec, despesas: desp, saldoMes: Math.round((rec - desp) * 100) / 100, dicas: dicas, aviso: AVISO };
 }
+
+/* ======================= CONEXÃO BANCÁRIA (Open Finance via Pluggy) — Fase 5 =======================
+ * Camada isolada: só estas funções conhecem a Pluggy. Para trocar de provedor (ex.: Belvo), reescreva
+ * pluggy_, ofContas_ e ofTransacoes_ mantendo o formato de saída; o resto (consentimento, importação,
+ * categorização, duplicados, revogação) não muda.
+ * Segurança: o app NUNCA vê nem guarda senha de banco (o login acontece no widget da Pluggy). Guardamos só
+ * o ItemId (identificador da conexão) e a data do consentimento. Credenciais da Pluggy ficam em
+ * Propriedades do script: PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET.
+ */
+var PLUGGY_BASE = 'https://api.pluggy.ai';
+var OF_CONSENTIMENTO = {
+  versao: '2026-11',
+  texto: [
+    'Você autoriza o Rumo a ler, por meio da Pluggy (instituição autorizada pelo Banco Central), os dados da conta que escolher: contas, saldos e transações dos últimos 90 dias.',
+    'Finalidade: importar seus lançamentos e saldos para você acompanhar suas finanças. Os dados não são vendidos nem compartilhados com terceiros.',
+    'O Rumo não vê nem guarda a senha do seu banco. O login é feito na tela segura da Pluggy/instituição. Guardamos apenas o identificador da conexão e a data do seu consentimento.',
+    'Você pode revogar quando quiser, em Conexões ▸ Desconectar. A conexão é encerrada na Pluggy e você escolhe se apaga ou mantém o que já foi importado. Também pode apagar tudo em Excluir conta (LGPD).'
+  ]
+};
+var OF_REGRAS_DESPESA = [
+  ['Mercado', /mercad|supermerc|atacad|assai|carrefour|pao de acucar|hortifruti|sacolao/],
+  ['Restaurantes', /ifood|restaurante|lanchonete|padaria|burger|mcdonald|pizza|starbucks|rappi|ze delivery|cafeteria/],
+  ['Transporte', /uber|\b99\b|cabify|combustivel|posto |shell|ipiranga|estaciona|pedagio|sem parar|bilhete unico|metro /],
+  ['Assinaturas', /netflix|spotify|disney|hbo|prime video|youtube premium|apple\.com|google one|deezer|globoplay|assinatura/],
+  ['Saúde', /farmaci|drogaria|droga raia|drogasil|pague menos|hospital|clinica|laborat|unimed|dentista/],
+  ['Contas de consumo', /enel|cemig|sabesp|copel|energia|\bagua\b|claro|\bvivo\b|\btim\b|internet|comgas/],
+  ['Educação', /escola|faculdade|curso|udemy|alura|mensalidade/],
+  ['Viagens', /airbnb|booking|latam|gol linhas|azul linhas|hotel|decolar/],
+  ['Impostos e Taxas', /iptu|ipva|darf|imposto|tarifa|anuidade|\biof\b/],
+  ['Lazer e Hobbies', /cinema|ingresso|steam|playstation|xbox|teatro/],
+  ['Compras', /amazon|mercado livre|shopee|magalu|americanas|aliexpress|shein/],
+  ['Roupas', /renner|riachuelo|c&a|zara|nike|adidas/],
+  ['Moradia/Aluguel', /aluguel|condominio/]
+];
+var OF_REGRAS_RECEITA = [['Salário', /salario|folha de pagamento|proventos/], ['Investimentos', /rendimento|dividendo|juros|resgate/]];
+var OF_FATURA = /pagamento (da |de )?fatura|pagto fatura|pgto fatura|fatura (do )?cartao|pagamento recebido/;
+
+function semAc_(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+function ofClienteId_(email) { return 'rumo-' + hash_(email).slice(0, 24); }
+function ofConfigurado_() { var p = PropertiesService.getScriptProperties(); return !!(p.getProperty('PLUGGY_CLIENT_ID') && p.getProperty('PLUGGY_CLIENT_SECRET')); }
+
+function pluggyChave_(renovar) {
+  var cache = CacheService.getScriptCache();
+  if (!renovar) { var g = cache.get('pluggy_key'); if (g) return g; }
+  var p = PropertiesService.getScriptProperties();
+  var id = p.getProperty('PLUGGY_CLIENT_ID'), seg = p.getProperty('PLUGGY_CLIENT_SECRET');
+  if (!id || !seg) throw erro_('of_nao_configurado', 'Conexão bancária ainda não configurada pelo administrador.');
+  var r = UrlFetchApp.fetch(PLUGGY_BASE + '/auth', { method: 'post', contentType: 'application/json', payload: JSON.stringify({ clientId: id, clientSecret: seg }), muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw erro_('of_indisponivel', 'Não foi possível falar com o provedor bancário agora.');
+  var k = JSON.parse(r.getContentText()).apiKey;
+  cache.put('pluggy_key', k, 6000);   // a chave dura 2 h
+  return k;
+}
+// Chamada autenticada. Devolve { codigo, corpo }. Nunca registra segredos nem corpo de resposta com dados bancários.
+function pluggy_(metodo, caminho, corpo, tentou) {
+  var op = { method: metodo, muteHttpExceptions: true, headers: { 'X-API-KEY': pluggyChave_(!!tentou) } };
+  if (corpo) { op.contentType = 'application/json'; op.payload = JSON.stringify(corpo); }
+  var r = UrlFetchApp.fetch(PLUGGY_BASE + caminho, op), cod = r.getResponseCode();
+  if (cod === 401 && !tentou) return pluggy_(metodo, caminho, corpo, true);
+  var txt = r.getContentText(), j = null;
+  try { j = txt ? JSON.parse(txt) : null; } catch (e) { j = null; }
+  return { codigo: cod, corpo: j };
+}
+function sConexao_(c, contas) { return { id: c.Id, banco: c.Banco, status: c.Status, consentimento: c.Consentimento, ultimaSync: c.UltimaSync, contas: contas }; }
+
+function ofCategoria_(email, tipo, desc, catPluggy) {
+  var texto = semAc_(desc + ' ' + (catPluggy || '')), regras = tipo === 'receita' ? OF_REGRAS_RECEITA : OF_REGRAS_DESPESA, nome = '';
+  for (var i = 0; i < regras.length && !nome; i++) if (regras[i][1].test(texto)) nome = regras[i][0];
+  if (!nome) return '';
+  var c = doUsuario_('Categorias', email).filter(function (x) { return x.Tipo === tipo && String(x.Arquivada) !== 'sim' && norm_(x.Nome) === norm_(nome); })[0];
+  return c ? c.Id : '';
+}
+
+function ofSincronizar_(email, con) {
+  var contasR = pluggy_('get', '/accounts?itemId=' + encodeURIComponent(con.ItemId));
+  if (contasR.codigo !== 200 || !contasR.corpo) throw erro_('of_indisponivel', 'Não foi possível ler as contas do banco agora. Tente de novo mais tarde.');
+  var de = con.UltimaSync ? somarDias_(String(con.UltimaSync).slice(0, 10), -5) : somarDias_(hoje_(), -90), ate = hoje_();
+  var res = { contas: 0, novasContas: 0, importadas: 0, duplicadas: 0, ignoradas: 0, semCategoria: 0, alertas: [], saldos: [] };
+  var mapa = doUsuario_('ContasBanco', email).filter(function (m) { return m.ConexaoId === con.Id; });
+  var existentes = {}, manuais = [], total = 0, contasUsuario = doUsuario_('Contas', email);   // manuais = tudo o que já existe: serve contra duplicar lançamento à mão e reconexão
+  doUsuario_('Lancamentos', email).forEach(function (l) {
+    total++;
+    if (l.Chave) existentes[l.Chave] = 1;
+    manuais.push({ conta: l.ContaId, tipo: l.Tipo, valor: Number(l.Valor), data: String(l.Data), usado: false });
+  });
+  var novos = [];
+  (contasR.corpo.results || []).forEach(function (a) {
+    var m = mapa.filter(function (x) { return x.ExtId === a.id; })[0], conta, nova = false;
+    var cartao = a.type === 'CREDIT';
+    if (!m) {
+      var campos = { Nome: seguro_((con.Banco ? con.Banco + ' ' : '') + (a.name || (cartao ? 'Cartão' : 'Conta')), 60), Tipo: cartao ? 'cartao' : (a.subtype === 'SAVINGS_ACCOUNT' ? 'poupanca' : 'corrente'), SaldoInicial: 0 };
+      if (cartao && a.creditData) {
+        campos.Limite = Number(a.creditData.creditLimit) || 0;
+        var fe = a.creditData.balanceCloseDate, vc = a.creditData.balanceDueDate;
+        if (fe) campos.DiaFechamento = Number(String(fe).slice(8, 10)) || 0;
+        if (vc) campos.DiaVencimento = Number(String(vc).slice(8, 10)) || 0;
+      }
+      var igual = contasUsuario.filter(function (c) { return c.Nome === campos.Nome && c.Tipo === campos.Tipo; })[0];   // reconexão: reaproveita a conta
+      if (igual) conta = igual; else { conta = upsert_('Contas', email, '', campos); nova = true; res.novasContas++; }
+      acrescentar_('ContasBanco', [{ Id: Utilities.getUuid(), Email: email, ConexaoId: con.Id, ExtId: String(a.id), ContaId: conta.Id }]);
+    } else conta = { Id: m.ContaId };
+    res.contas++;
+    var net = 0;
+    var tr = pluggy_('get', '/transactions?accountId=' + encodeURIComponent(a.id) + '&from=' + de + '&to=' + ate + '&pageSize=500');
+    var lista = (tr.codigo === 200 && tr.corpo && tr.corpo.results) || [];
+    lista.forEach(function (t) {
+      var chave = 'of:' + String(t.id);
+      if (existentes[chave]) return;
+      var valor = Math.abs(Number(t.amount)), data = String(t.date || '').slice(0, 10);
+      if (!(valor > 0) || !dataOk_(data)) { res.ignoradas++; return; }
+      var tipo = t.type === 'CREDIT' ? 'receita' : 'despesa', desc = seguro_(t.description || t.descriptionRaw || 'Transação bancária', 200);
+      if (OF_FATURA.test(semAc_(desc))) { res.ignoradas++; return; }   // pagamento de fatura: evita contar duas vezes (compras do cartão já entram)
+      var dup = manuais.filter(function (x) { return !x.usado && x.tipo === tipo && Math.abs(x.valor - valor) < 0.005 && Math.abs(diasEntre_(x.data, data)) <= 1; })[0];
+      if (dup) { dup.usado = true; res.duplicadas++; return; }   // já lançado à mão em qualquer conta: não duplica
+      var cat = ofCategoria_(email, tipo, desc, t.category);
+      if (!cat) res.semCategoria++;
+      existentes[chave] = 1;
+      net += tipo === 'receita' ? valor : -valor;
+      novos.push({ Id: Utilities.getUuid(), Email: email, Data: data, Tipo: tipo, Valor: valor, ContaId: conta.Id, CategoriaId: cat, Descricao: desc, Chave: chave, Criado: agora_(), Tags: '' });
+    });
+    if (nova) {   // o saldo do app passa a bater com o do banco no momento da conexão
+      var saldoBanco = Number(a.balance) || 0;
+      upsert_('Contas', email, conta.Id, { SaldoInicial: Math.round(((cartao ? -saldoBanco : saldoBanco) - net) * 100) / 100 });
+    }
+    res.saldos.push({ conta: a.name || '', saldoBanco: Number(a.balance) || 0 });
+  });
+  if (total + novos.length > CONFIG.MAX_LANCAMENTOS_POR_USUARIO) throw erro_('limite', 'Limite de lançamentos atingido.');
+  acrescentar_('Lancamentos', novos);
+  res.importadas = novos.length;
+  res.alertas = verificarLimites_(email, mesesDe_(novos.filter(function (n) { return n.Tipo === 'despesa'; }).map(function (n) { return n.Data; })));
+  upsert_('Conexoes', email, con.Id, { UltimaSync: agora_(), Status: 'ativa' });
+  return res;
+}
+
+ACOES.of_status = function (u) {
+  var cons = doUsuario_('Conexoes', u.email), mapa = doUsuario_('ContasBanco', u.email);
+  return { configurado: ofConfigurado_(), provedor: 'Pluggy', consentimento: OF_CONSENTIMENTO,
+    conexoes: cons.map(function (c) { return sConexao_(c, mapa.filter(function (m) { return m.ConexaoId === c.Id; }).length); }), aviso: AVISO };
+};
+// 1) o usuário aceita o consentimento; devolvemos um token de curta duração para o widget (Pluggy Connect) abrir.
+ACOES.of_token = function (u, d) {
+  if (d.consentimento !== true) throw erro_('sem_consentimento', 'É preciso aceitar o consentimento para conectar.');
+  if (doUsuario_('Conexoes', u.email).length >= 5) throw erro_('limite', 'Limite de 5 conexões atingido.');
+  var r = pluggy_('post', '/connect_token', { options: { clientUserId: ofClienteId_(u.email) } });
+  if (r.codigo !== 200 || !r.corpo || !r.corpo.accessToken) throw erro_('of_indisponivel', 'Não foi possível iniciar a conexão agora.');
+  return { connectToken: r.corpo.accessToken };
+};
+// 2) o widget devolveu o itemId: confere que pertence a este usuário, grava o consentimento e importa.
+ACOES.of_conectar = function (u, d) {
+  if (d.consentimento !== true) throw erro_('sem_consentimento', 'É preciso aceitar o consentimento para conectar.');
+  var itemId = String(d.itemId || '');
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(itemId)) throw erro_('item_invalido', 'Conexão inválida.');
+  if (ler_('Conexoes').some(function (c) { return c.ItemId === itemId; })) throw erro_('item_invalido', 'Essa conexão já está em uso.');
+  var r = pluggy_('get', '/items/' + encodeURIComponent(itemId));
+  if (r.codigo !== 200 || !r.corpo) throw erro_('item_invalido', 'Conexão não encontrada no provedor.');
+  if (String(r.corpo.clientUserId || '') !== ofClienteId_(u.email)) throw erro_('item_invalido', 'Essa conexão não pertence a você.');
+  if (['LOGIN_ERROR', 'OUTDATED', 'ERROR'].indexOf(String(r.corpo.status)) >= 0) throw erro_('of_login', 'O banco recusou o login. Tente conectar de novo.');
+  var con = upsert_('Conexoes', u.email, '', { ItemId: itemId, Banco: seguro_(r.corpo.connector && r.corpo.connector.name || 'Banco', 40), Status: 'ativa', Consentimento: agora_() + ' v' + OF_CONSENTIMENTO.versao, UltimaSync: '' });
+  var s = ofSincronizar_(u.email, con);
+  return { conexao: sConexao_(con, s.contas), resultado: s };
+};
+ACOES.of_sincronizar = function (u, d) {
+  var con = doUsuario_('Conexoes', u.email).filter(function (c) { return c.Id === String(d.id || ''); })[0];
+  if (!con) throw erro_('nao_encontrado', 'Conexão não encontrada.');
+  return ofSincronizar_(u.email, con);
+};
+// Revoga: encerra no provedor, apaga o vínculo; opcionalmente remove o que veio do banco.
+ACOES.of_desconectar = function (u, d) {
+  var con = doUsuario_('Conexoes', u.email).filter(function (c) { return c.Id === String(d.id || ''); })[0];
+  if (!con) throw erro_('nao_encontrado', 'Conexão não encontrada.');
+  var revogada = ofRevogar_(con.ItemId), mapa = doUsuario_('ContasBanco', u.email).filter(function (m) { return m.ConexaoId === con.Id; });
+  var contas = {}; mapa.forEach(function (m) { contas[m.ContaId] = 1; });
+  var removidos = 0;
+  if (d.removerDados === true) {
+    var resto = ler_('Lancamentos').filter(function (l) {
+      var apagar = String(l.Email).toLowerCase() === u.email && String(l.Chave).indexOf('of:') === 0 && contas[l.ContaId];
+      if (apagar) removidos++;
+      return !apagar;
+    });
+    reescrever_('Lancamentos', resto);
+  }
+  apagarLinha_('Conexoes', con._linha);
+  ler_('ContasBanco').filter(function (m) { return m.ConexaoId === con.Id; }).map(function (m) { return m._linha; }).sort(function (a, b) { return b - a; }).forEach(function (n) { apagarLinha_('ContasBanco', n); });
+  return { desconectada: true, revogadaNoProvedor: revogada, lancamentosRemovidos: removidos };
+};
+function ofRevogar_(itemId) {
+  try { var r = pluggy_('delete', '/items/' + encodeURIComponent(itemId)); return r.codigo === 200 || r.codigo === 204 || r.codigo === 404; } catch (e) { console.error('revogar'); return false; }
+}
+LEITURAS.of_status = 1;
 
 /* ======================= AUTORIZAÇÃO (rodar uma vez, manualmente) ======================= */
 

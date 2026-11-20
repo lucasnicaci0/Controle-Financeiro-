@@ -116,7 +116,7 @@ function mesRel(k) { const p = mesAtual.split('-').map(Number); const d = new Da
   confere('segundo iniciar não duplica', chamar(ctx, 'iniciar', A, {}).dados.novo === false);
   chamar(ctx, 'iniciar', B, {});
   ctx.autorizar();
-  confere('autorizar cria as 15 abas', Object.keys(ctx._planilha._abas).sort().join(',') === 'Agenda,Alertas,Ativos,CambioAlertas,Categorias,Consultor,Contas,Feeds,Fotos,Lancamentos,Limites,Mensagens,Metas,Orcamentos,Usuarios', Object.keys(ctx._planilha._abas));
+  confere('autorizar cria as 17 abas', Object.keys(ctx._planilha._abas).sort().join(',') === 'Agenda,Alertas,Ativos,CambioAlertas,Categorias,Conexoes,Consultor,Contas,ContasBanco,Feeds,Fotos,Lancamentos,Limites,Mensagens,Metas,Orcamentos,Usuarios', Object.keys(ctx._planilha._abas));
   const catsA = chamar(ctx, 'listar_categorias', A, {}).dados;
   confere('categorias padrão (29 = 24 de despesa + 5 de receita)', catsA.length === 29);
   const contasA = chamar(ctx, 'listar_contas', A, {}).dados;
