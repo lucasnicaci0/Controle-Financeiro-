@@ -60,3 +60,13 @@ O canvas respeita o `devicePixelRatio` (limite 1,5x / 2x / 3x conforme a GPU), o
 - Planilhas antigas ganham as colunas novas sozinhas (migração automática).
 - **Atenção:** após atualizar o `Code.gs`, publique uma **nova versão** da implantação.
 - Testes: `node apps-script/teste_gs1.js`, `node apps-script/teste_gs2.js`, `node apps-script/teste_fase1_ui.js` (precisa de Playwright).
+
+## Fase 2 — Agenda, Excel e Limites de gastos (v1.2.0)
+
+- **Agenda** (aba nova): visão de mês (calendário) e lista; tipos *Compromisso*, *Conta a pagar* e *Receita prevista*; repetição semanal, mensal (dia 31 vira o último dia do mês curto) e anual; lembretes (atrasados e os que entram na janela "lembrar X dias antes"). Marcar uma conta/receita como feita **cria o lançamento sozinho** (uma vez só); desmarcar remove o lançamento criado.
+- **Celular:** escolhi o **feed de calendário .ics (assinatura por link)** e não a API do Google Agenda. Motivo: funciona em Google Agenda, iPhone e Outlook, é grátis, e a API do Google exigiria uma tela de consentimento OAuth verificada pelo Google e armazenar tokens dos usuários. Limites do .ics: a atualização é feita pelo aplicativo de calendário (o Google pode levar horas) e é somente leitura. O link tem um token secreto; "Gerar novo link" invalida o anterior.
+- **Exportar para Excel** (Painel): .xlsx com abas *Lançamentos*, *Resumo por categoria* e *Resumo por conta*, valores numéricos (despesas negativas na aba Lançamentos), datas reais e moeda em R$. Filtros: período (mês, ano ou tudo), conta, categoria e tipo. Gerado no navegador por `js/xlsx.js` (sem biblioteca).
+- **Limites de gastos** (aba nova): limite mensal geral, por conta, por cartão (conta do tipo Cartão) e por categoria. Alertas em 80% (atenção), 100% (atingido) e acima (excedido), registrados uma vez por mês/limite/nível, mostrados como aviso ao salvar o lançamento e no histórico da aba.
+- **Envio de notificações:** a função `notificar_` do `Code.gs` é o ponto de extensão. Já envia e-mail se você criar a Propriedade do script `NOTIFICAR_EMAIL = sim` (pede uma permissão nova ao rodar `autorizar` de novo). WhatsApp/push ficam para a Fase 5.
+- Tabelas novas na planilha: `Agenda`, `Limites`, `Alertas`, `Feeds` (criadas por `autorizar`).
+- Testes: `teste_gs3.js` (back-end) e `teste_fase2_ui.js` (interface, desktop e celular).

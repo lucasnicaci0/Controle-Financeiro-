@@ -69,7 +69,7 @@ function novoContexto() {
       base64EncodeWebSafe: b => Buffer.from(b).toString('base64url'),
       DigestAlgorithm: { SHA_256: 'SHA_256' }
     },
-    ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType() { return this; }, getContent: () => s }) }
+    ContentService: { MimeType: { JSON: 'json', ICAL: 'ical' }, createTextOutput: s => ({ setMimeType() { return this; }, getContent: () => s }) }
   };
   vm.createContext(ctx);
   vm.runInContext(CODIGO, ctx);
@@ -93,4 +93,4 @@ function chamar(ctx, acao, tk, dados) {
   return JSON.parse(saida.getContent());
 }
 
-module.exports = { novoContexto, token, chamar, confere: (n, c, x) => confere(n, c, x), resultado: () => ({ ok, falhas }), formatDate, FUSO };
+module.exports = { doGetFeed: (ctx, t) => ctx.doGet({ parameter: { feed: t } }).getContent(), novoContexto, token, chamar, confere: (n, c, x) => confere(n, c, x), resultado: () => ({ ok, falhas }), formatDate, FUSO };

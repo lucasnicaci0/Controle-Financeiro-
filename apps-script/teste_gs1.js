@@ -69,7 +69,7 @@ function novoContexto() {
       base64EncodeWebSafe: b => Buffer.from(b).toString('base64url'),
       DigestAlgorithm: { SHA_256: 'SHA_256' }
     },
-    ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType() { return this; }, getContent: () => s }) }
+    ContentService: { MimeType: { JSON: 'json', ICAL: 'ical' }, createTextOutput: s => ({ setMimeType() { return this; }, getContent: () => s }) }
   };
   vm.createContext(ctx);
   vm.runInContext(CODIGO, ctx);
@@ -116,7 +116,7 @@ function mesRel(k) { const p = mesAtual.split('-').map(Number); const d = new Da
   confere('segundo iniciar não duplica', chamar(ctx, 'iniciar', A, {}).dados.novo === false);
   chamar(ctx, 'iniciar', B, {});
   ctx.autorizar();
-  confere('autorizar cria as 7 abas', Object.keys(ctx._planilha._abas).sort().join(',') === 'Categorias,Consultor,Contas,Lancamentos,Metas,Orcamentos,Usuarios', Object.keys(ctx._planilha._abas));
+  confere('autorizar cria as 11 abas', Object.keys(ctx._planilha._abas).sort().join(',') === 'Agenda,Alertas,Categorias,Consultor,Contas,Feeds,Lancamentos,Limites,Metas,Orcamentos,Usuarios', Object.keys(ctx._planilha._abas));
   const catsA = chamar(ctx, 'listar_categorias', A, {}).dados;
   confere('categorias padrão (29 = 24 de despesa + 5 de receita)', catsA.length === 29);
   const contasA = chamar(ctx, 'listar_contas', A, {}).dados;

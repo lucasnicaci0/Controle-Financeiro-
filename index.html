@@ -11,6 +11,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>
+<script src="js/xlsx.js" defer></script>
 <style>
 :root{
   --bg:#05020A; --ink:#F5F3FF; --mute:#b2a3ee; --line:rgba(167,139,250,.2);
@@ -93,6 +94,15 @@ button,input,select{font:inherit;color:inherit}
 .big{font-size:clamp(2.2667rem,5.4vw,3.4667rem);font-weight:700;letter-spacing:-.03em;line-height:1.1;font-variant-numeric:tabular-nums}
 .stat{font-size:1.7333rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .pos{color:var(--good)}.neg{color:var(--bad)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.cal .sem{text-align:center;font-size:.75rem;color:var(--mute);padding:4px 0}
+.dia{aspect-ratio:1/1;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:12px;color:inherit;cursor:pointer;font:inherit;padding:2px}
+.dia.vazio{border:0;background:none;cursor:default}.dia.hoje{border-color:#22D3EE}.dia.sel{background:rgba(139,92,246,.35);border-color:#8B5CF6}
+.dia .pts{display:flex;gap:3px;min-height:6px}.dia .pts i{width:6px;height:6px;border-radius:50%}.dia .pts i.ok{opacity:.35}
+.item.ag.feito .t b{text-decoration:line-through;opacity:.6}
+.ck{width:28px;height:28px;border-radius:8px;border:2px solid rgba(255,255,255,.4);background:none;color:#05020A;cursor:pointer;font-weight:700;flex:none}.ck.on{background:#22D3EE;border-color:#22D3EE}
+.lim{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.07)}.lim .row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.lim-barra{position:relative;height:12px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden;margin-bottom:6px}.lim-barra i{display:block;height:100%;border-radius:99px;transition:width .6s}
+.lim-barra u{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,255,255,.55)}
 .cat-ico{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:12px;border:1px solid;font-size:1.2rem;flex:none}
 .cat-ico.grande{width:52px;height:52px;font-size:1.6rem}
 .item.arq{opacity:.6}
@@ -256,6 +266,8 @@ body.in-app #scrim{opacity:1}
         <button data-v="metas">Metas</button>
         <button data-v="contas">Contas</button>
         <button data-v="cats">Categorias</button>
+        <button data-v="agenda">Agenda</button>
+        <button data-v="limites">Limites</button>
         <button data-v="cons">Consultor</button>
         <button data-v="opcoes">Opções</button>
       </nav>
@@ -532,8 +544,29 @@ const demoDB = (() => {
   });
   const orcs = [{ id: id(), categoriaId: cat('Alimentação'), mes: mesAtual(), limite: 620 }, { id: id(), categoriaId: cat('Lazer'), mes: mesAtual(), limite: 300 }];
   const metas = [{ id: id(), nome: 'Viagem de férias', valorAlvo: 6000, valorAtual: 2200, prazo: somarMes(mesAtual(), 8) + '-15' }, { id: id(), nome: 'Reserva de emergência', valorAlvo: 15000, valorAtual: 3000, prazo: '' }];
-  return { id, cats, contas, lanc, orcs, metas };
+  return { id, cats, contas, lanc, orcs, metas, agenda: [], limites: [], alertas: [] };
 })();
+
+
+/* limites no modo demonstração (mesma regra do back-end) */
+function demoNivel(g, l) { const c = Math.round(g * 100), t = Math.round(l * 100); return c > t ? 'excedido' : c === t ? 'atingido' : c * 100 >= t * 80 ? 'aviso' : 'ok'; }
+function demoLimites(D, mes) {
+  const gastos = D.lanc.filter(l => l.tipo === 'despesa' && l.data.slice(0, 7) === mes);
+  return D.limites.map(l => {
+    const g = Math.round(gastos.filter(m => l.escopo === 'geral' || (l.escopo === 'conta' && m.contaId === l.alvoId) || (l.escopo === 'categoria' && m.categoriaId === l.alvoId)).reduce((s, m) => s + m.valor, 0) * 100) / 100;
+    const c = D.contas.find(x => x.id === l.alvoId), k = D.cats.find(x => x.id === l.alvoId);
+    return { id: l.id, escopo: l.escopo, alvoId: l.alvoId, nome: l.escopo === 'geral' ? 'Gasto geral' : l.escopo === 'conta' ? (c ? c.nome : '?') : (k ? k.nome : '?'), cartao: !!(c && c.tipo === 'cartao'), limite: l.limite, gasto: g, restante: Math.round((l.limite - g) * 100) / 100, pct: Math.round(g / l.limite * 100), nivel: demoNivel(g, l.limite), mes };
+  });
+}
+function demoAlertas(D, mes) {
+  const novos = [], txt = { aviso: 'Atenção: 80% do limite', atingido: 'Limite atingido', excedido: 'Limite excedido' };
+  demoLimites(D, mes).forEach(l => {
+    if (l.nivel === 'ok' || D.alertas.some(a => a.mes === mes && a.limiteId === l.id && a.nivel === l.nivel)) return;
+    const a = { id: D.id(), mes, limiteId: l.id, nivel: l.nivel, gasto: l.gasto, limite: l.limite, criado: new Date().toISOString().slice(0, 19), enviado: '', mensagem: txt[l.nivel] + ' — ' + l.nome + ': ' + brl(l.gasto) + ' de ' + brl(l.limite) + ' (' + l.pct + '%).' };
+    D.alertas.push(a); novos.push(a);
+  });
+  return novos;
+}
 
 function demo(acao, d) {
   const D = demoDB, ok = v => Promise.resolve(JSON.parse(JSON.stringify(v === undefined ? {} : v)));
@@ -558,7 +591,7 @@ function demo(acao, d) {
     case 'listar_contas': return ok(saldos());
     case 'listar_categorias': return ok(D.cats);
     case 'listar_lancamentos': return ok(doMes(d.mes).sort((a, b) => (a.data < b.data ? 1 : -1)));
-    case 'salvar_lancamento': { const v = parseValor(d.valor); if (!(v > 0)) return Promise.reject(new Error('Valor inválido.')); D.lanc.push({ id: D.id(), data: d.data, tipo: d.tipo, valor: v, contaId: d.contaId, categoriaId: d.categoriaId || '', descricao: d.descricao || '', tags: String(d.tags || '').split(',').map(t => t.trim().replace(/^#+/, '')).filter(Boolean).slice(0, 8) }); return ok({}); }
+    case 'salvar_lancamento': { const v = parseValor(d.valor); if (!(v > 0)) return Promise.reject(new Error('Valor inválido.')); D.lanc.push({ id: D.id(), data: d.data, tipo: d.tipo, valor: v, contaId: d.contaId, categoriaId: d.categoriaId || '', descricao: d.descricao || '', tags: String(d.tags || '').split(',').map(t => t.trim().replace(/^#+/, '')).filter(Boolean).slice(0, 8) }); return ok({ alertas: d.tipo === 'despesa' ? demoAlertas(demoDB, d.data.slice(0, 7)) : [] }); }
     case 'excluir_lancamento': D.lanc.splice(D.lanc.findIndex(l => l.id === d.id), 1); return ok({});
     case 'importar_lancamentos': d.linhas.forEach(l => D.lanc.push({ id: D.id(), data: l.data, tipo: l.tipo, valor: l.valor, contaId: d.contaId, categoriaId: '', descricao: l.descricao })); return ok({ importadas: d.linhas.length, ignoradas: 0, invalidas: [] });
     case 'listar_orcamentos': return ok(D.orcs.filter(o => o.mes === d.mes));
@@ -588,6 +621,54 @@ function demo(acao, d) {
     }
     case 'restaurar_categorias_padrao': return ok({ adicionadas: 0, nomes: [] });
     case 'listar_tags': { const m = {}; movs().forEach(l => (l.tags || []).forEach(t => { m[t.toLowerCase()] = m[t.toLowerCase()] || { tag: t, total: 0 }; m[t.toLowerCase()].total++; })); return ok(Object.values(m)); }
+    case 'listar_agenda': {
+      const hoje = hojeISO(), add = (iso, n) => { const t = new Date(iso + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+      const ocs = (a, de, ate) => {
+        const out = [], fim = a.fim && a.fim < ate ? a.fim : ate;
+        if (a.recorrencia === 'nenhuma') { if (a.data >= de && a.data <= fim) out.push(a.data); return out; }
+        if (a.recorrencia === 'semanal') { for (let x = a.data; x <= fim; x = add(x, 7)) if (x >= de) out.push(x); return out; }
+        for (let mm = a.data.slice(0, 7); mm <= fim.slice(0, 7); mm = somarMes(mm, 1)) {
+          if (a.recorrencia === 'anual' && mm.slice(5) !== a.data.slice(5, 7)) continue;
+          const [yy, m2] = mm.split('-').map(Number), dd = mm + '-' + String(Math.min(Number(a.data.slice(8)), new Date(yy, m2, 0).getDate())).padStart(2, '0');
+          if (dd >= a.data && dd >= de && dd <= fim) out.push(dd);
+        }
+        return out;
+      };
+      const lista = (de, ate) => D.agenda.flatMap(a => ocs(a, de, ate).map(dt => ({ ...a, data: dt, concluido: a.feitos.includes(dt) }))).sort((x, y) => (x.data < y.data ? -1 : 1));
+      const ult = d.mes + '-' + String(new Date(...d.mes.split('-').map(Number).map((n, i) => (i ? n : n)), 0).getDate()).padStart(2, '0');
+      const pend = lista(add(hoje, -60), add(hoje, 30)).filter(o => !o.concluido && o.data <= add(hoje, o.lembreteDias)).map(o => ({ ...o, situacao: o.data < hoje ? 'atrasado' : o.data === hoje ? 'hoje' : 'proximo' }));
+      return ok({ mes: d.mes, hoje, itens: lista(d.mes + '-01', ult), pendentes: pend, definicoes: D.agenda });
+    }
+    case 'salvar_agenda': {
+      if (!String(d.titulo || '').trim()) return Promise.reject(new Error('Informe o título.'));
+      const novo = { titulo: d.titulo, tipo: d.tipo, data: d.data, valor: Number(d.valor) || 0, contaId: d.contaId || '', categoriaId: d.categoriaId || '', recorrencia: d.recorrencia || 'nenhuma', fim: d.fim || '', lembreteDias: Number(d.lembreteDias) || 0 };
+      const a = D.agenda.find(x => x.id === d.id); if (a) Object.assign(a, novo); else D.agenda.push({ id: D.id(), feitos: [], ...novo }); return ok({});
+    }
+    case 'excluir_agenda': D.agenda.splice(D.agenda.findIndex(x => x.id === d.id), 1); return ok({});
+    case 'concluir_agenda': {
+      const a = D.agenda.find(x => x.id === d.id); if (!a) return Promise.reject(new Error('Item não encontrado.'));
+      let lanc = null;
+      if (d.concluido !== false) {
+        if (!a.feitos.includes(d.data)) { a.feitos.push(d.data);
+          if (a.tipo !== 'compromisso' && a.valor > 0) { lanc = { id: D.id(), data: hojeISO(), tipo: a.tipo === 'receita' ? 'receita' : 'despesa', valor: a.valor, contaId: a.contaId || D.contas[0].id, categoriaId: a.categoriaId, descricao: a.titulo, chave: 'agenda:' + a.id + ':' + d.data }; D.lanc.push(lanc); } }
+      } else { a.feitos = a.feitos.filter(x => x !== d.data); const i = D.lanc.findIndex(l => l.chave === 'agenda:' + a.id + ':' + d.data); if (i >= 0) D.lanc.splice(i, 1); }
+      return ok({ concluido: d.concluido !== false, lancamento: lanc, alertas: lanc ? demoAlertas(D, hojeISO().slice(0, 7)) : [] });
+    }
+    case 'agenda_feed': return ok({ token: 'demo-' + '0'.repeat(28) });
+    case 'listar_limites': return ok(demoLimites(D, d.mes));
+    case 'salvar_limite': {
+      const l = D.limites.find(x => x.escopo === d.escopo && x.alvoId === (d.alvoId || '')); const v = parseValor(d.limite);
+      if (!(v > 0)) return Promise.reject(new Error('Informe um limite maior que zero.'));
+      if (l) l.limite = v; else D.limites.push({ id: D.id(), escopo: d.escopo, alvoId: d.alvoId || '', limite: v });
+      return ok({ alertas: demoAlertas(D, mesAtual()) });
+    }
+    case 'excluir_limite': D.limites.splice(D.limites.findIndex(x => x.id === d.id), 1); return ok({});
+    case 'listar_alertas': return ok(D.alertas.slice().reverse());
+    case 'exportar_lancamentos': {
+      const nc = i => (D.contas.find(c => c.id === i) || {}).nome || '', nk = i => (D.cats.find(c => c.id === i) || { nome: 'Sem categoria' }).nome;
+      return ok(D.lanc.filter(l => (!d.de || l.data >= d.de) && (!d.ate || l.data <= d.ate) && (!d.tipo || l.tipo === d.tipo) && (!d.contaId || l.contaId === d.contaId) && (!d.categoriaId || l.categoriaId === d.categoriaId))
+        .sort((a, b) => (a.data < b.data ? -1 : 1)).map(l => ({ data: l.data, tipo: l.tipo, valor: l.valor, conta: nc(l.contaId), categoria: nk(l.categoriaId), descricao: l.descricao, tags: (l.tags || []).join(', ') })));
+    }
     case 'resumo': return ok(resumo(d.mes));
     case 'exportar_dados': return ok({ Contas: D.contas, Categorias: D.cats, Lancamentos: D.lanc, Orcamentos: D.orcs, Metas: D.metas });
     case 'apagar_conta_usuario': return ok({ apagado: true });
@@ -781,7 +862,7 @@ async function vJornada(raiz) {
   CB.call('enterJourney', spacer, lista);
   Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes }).catch(() => null)]).then(([r, c]) => CB.call('setData', r, c)).catch(() => { /* cartões ficam sem números */ });
 }
-const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, cons: vCons };
+const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, agenda: vAgenda, limites: vLimites, cons: vCons };
 
 async function vPainel(raiz) {
   const [res, con] = await Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes })]);
@@ -805,7 +886,7 @@ async function vPainel(raiz) {
   raiz.replaceChildren(
     el('div', { class: 'grid g-hero' }, hero, stat('Receitas', res.receitas, 'pos'), stat('Despesas', res.despesas, 'neg'), stat('Sobra do mês', res.saldoMes, res.saldoMes >= 0 ? 'pos' : 'neg')),
     el('div', { class: 'grid g-2 stack' }, barrasCard, roscaCard),
-    el('div', { class: 'grid g-eq' }, orcCard, conCard));
+    el('div', { class: 'grid g-eq' }, orcCard, conCard), el('div', { class: 'stack' }, cardExportar()));
 }
 
 async function vLanc(raiz) {
@@ -826,8 +907,8 @@ async function vLanc(raiz) {
   const form = el('form', { class: 'f', onsubmit: tentar(async () => {
     const v = parseValor(valor.value);
     if (!(v > 0)) throw new Error('Informe um valor maior que zero.');
-    await api('salvar_lancamento', { tipo, valor: v, data: data.value, contaId: conta.value, categoriaId: cat.value, descricao: desc.value, tags: tagsIn.value });
-    toast('Lançamento salvo.', 'ok'); await ir('lanc');
+    const salvo = await api('salvar_lancamento', { tipo, valor: v, data: data.value, contaId: conta.value, categoriaId: cat.value, descricao: desc.value, tags: tagsIn.value });
+    toast('Lançamento salvo.', 'ok'); avisaAlertas(salvo && salvo.alertas); await ir('lanc');
   }) }, el('div', { class: 'campo' }, el('span', null, 'Tipo'), el('div', { class: 'seg' }, bDesp, bRec)),
     campo('Valor (R$)', valor), campo('Data', data), campo('Conta', conta), campo('Categoria', cat), campo('Descrição', desc), campo('Tags (separe por vírgula)', tagsIn), dl,
     el('button', { class: 'btn', type: 'submit' }, 'Salvar'));
@@ -862,7 +943,7 @@ async function vLanc(raiz) {
     bImp.disabled = true; let imp = 0, ign = 0, inv = 0;
     for (let i = 0; i < pronto.length; i += 500) {
       const r = await api('importar_lancamentos', { contaId: contaImp.value, linhas: pronto.slice(i, i + 500) });
-      imp += r.importadas; ign += r.ignoradas; inv += r.invalidas.length;
+      imp += r.importadas; ign += r.ignoradas; inv += r.invalidas.length; avisaAlertas(r.alertas);
     }
     toast(imp + ' importadas' + (ign ? ', ' + ign + ' já existiam' : '') + (inv ? ', ' + inv + ' inválidas' : '') + '.', 'ok');
     await ir('lanc');
@@ -1007,6 +1088,154 @@ async function vCats(raiz) {
   raiz.replaceChildren(formBox,
     el('div', { class: 'card glass reveal' }, el('h3', null, 'Minhas categorias'), el('div', { class: 'seg', style: 'margin-bottom:12px' }, bD, bR), corpo,
       el('div', { style: 'margin-top:16px' }, rest)));
+}
+
+/* ======================= alertas de limite (toasts) ======================= */
+function avisaAlertas(lista) {
+  (lista || []).forEach((a, i) => setTimeout(() => toast((a.nivel === 'excedido' ? '🚨 ' : a.nivel === 'atingido' ? '⛔ ' : '⚠️ ') + a.mensagem, a.nivel === 'excedido' ? 'erro' : ''), i * 400));
+}
+
+/* ======================= agenda ======================= */
+const AG_TIPO = { compromisso: ['Compromisso', '#8B5CF6'], conta: ['Conta a pagar', '#FF4DA6'], receita: ['Receita prevista', '#22D3EE'] };
+const AG_REC = { nenhuma: 'Não repete', semanal: 'Toda semana', mensal: 'Todo mês', anual: 'Todo ano' };
+async function vAgenda(raiz) {
+  const dados = await api('listar_agenda', { mes: S.mes });
+  let modo = 'mes', diaSel = S.mes === mesAtual() ? dados.hoje : S.mes + '-01', editando = null;
+  const corpoCal = el('div'), formBox = el('div');
+  const verbo = t => t === 'conta' ? 'Pagar' : t === 'receita' ? 'Receber' : 'Concluir';
+  const alternar = it => tentar(async () => {
+    const r = await api('concluir_agenda', { id: it.id, data: it.data, concluido: !it.concluido, contaId: it.contaId });
+    toast(it.concluido ? 'Marcado como pendente.' : (r.lancamento ? 'Feito — lançamento criado.' : 'Concluído.'), 'ok'); avisaAlertas(r.alertas); await ir('agenda');
+  });
+  const linha = (it, i) => el('div', { class: 'item ag' + (it.concluido ? ' feito' : ''), style: '--i:' + Math.min(i, 20) },
+    el('button', { class: 'ck' + (it.concluido ? ' on' : ''), type: 'button', 'aria-label': (it.concluido ? 'Desmarcar ' : verbo(it.tipo) + ' ') + it.titulo, onclick: alternar(it) }, it.concluido ? '✓' : ''),
+    el('div', { class: 't' }, el('b', null, it.titulo), el('span', { class: 'small mute' }, dataBR(it.data) + ' · ' + AG_TIPO[it.tipo][0] + (it.recorrencia !== 'nenhuma' ? ' · ' + AG_REC[it.recorrencia] : ''))),
+    it.valor ? el('span', { class: 'v ' + (it.tipo === 'receita' ? 'pos' : 'neg') }, (it.tipo === 'receita' ? '+ ' : '− ') + brl(it.valor)) : '',
+    el('button', { class: 'btn ghost mini', type: 'button', onclick: () => { editando = dados.definicoes.find(x => x.id === it.id); form(); scrollTo({ top: 0, behavior: reduz ? 'auto' : 'smooth' }); } }, 'Editar'),
+    el('button', { class: 'x', 'aria-label': 'Excluir ' + it.titulo, onclick: tentar(async () => { if (!confirm('Excluir "' + it.titulo + '"' + (it.recorrencia !== 'nenhuma' ? ' e todas as repetições' : '') + '?')) return; await api('excluir_agenda', { id: it.id }); toast('Item excluído.'); await ir('agenda'); }) }, '×'));
+  const desenha = () => {
+    const [y, m] = S.mes.split('-').map(Number), prim = new Date(y, m - 1, 1).getDay(), dias = new Date(y, m, 0).getDate();
+    const porDia = {}; dados.itens.forEach(i => (porDia[i.data] = porDia[i.data] || []).push(i));
+    const cel = [];
+    for (let k = 0; k < prim; k++) cel.push(el('span', { class: 'dia vazio', 'aria-hidden': 'true' }));
+    for (let n = 1; n <= dias; n++) {
+      const iso = S.mes + '-' + String(n).padStart(2, '0'), its = porDia[iso] || [];
+      cel.push(el('button', { type: 'button', class: 'dia' + (iso === dados.hoje ? ' hoje' : '') + (iso === diaSel ? ' sel' : ''), 'aria-label': n + ' de ' + mesNome(S.mes, true) + (its.length ? ', ' + its.length + ' item(ns)' : ''), onclick: () => { diaSel = iso; desenha(); } },
+        el('span', null, n), el('span', { class: 'pts' }, its.slice(0, 4).map(i => el('i', { class: i.concluido ? 'ok' : '', style: 'background:' + AG_TIPO[i.tipo][1] })))));
+    }
+    const doDia = porDia[diaSel] || [];
+    corpoCal.replaceChildren(modo === 'mes'
+      ? el('div', null, el('div', { class: 'cal' }, ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(x => el('b', { class: 'sem', 'aria-hidden': 'true' }, x)), cel),
+        el('h4', { style: 'margin:16px 0 8px' }, dataBR(diaSel) + (diaSel === dados.hoje ? ' · hoje' : '')),
+        el('div', { class: 'lista' }, doDia.length ? doDia.map(linha) : [el('div', { class: 'vazio' }, 'Nada neste dia.')]))
+      : el('div', { class: 'lista' }, dados.itens.length ? dados.itens.map(linha) : [el('div', { class: 'vazio' }, 'Nada agendado em ' + mesNome(S.mes, true) + '.')]));
+  };
+  const form = () => {
+    const c = editando, ini = diaSel;
+    const tit = el('input', { required: true, maxlength: '80', placeholder: 'Ex.: Conta de luz', autocomplete: 'off', value: c ? c.titulo : '' });
+    const tp = selecao(Object.keys(AG_TIPO).map(k => ({ v: k, t: AG_TIPO[k][0] })), c ? c.tipo : 'conta');
+    const dt = el('input', { type: 'date', required: true, value: c ? c.data : ini });
+    const vl = el('input', { inputmode: 'decimal', placeholder: '0,00', autocomplete: 'off', 'aria-label': 'Valor', value: c && c.valor ? String(c.valor).replace('.', ',') : '' });
+    const cn = selecao(S.contas.map(x => ({ v: x.id, t: x.nome })), c && c.contaId);
+    const ct = el('select'); const atCat = () => ct.replaceChildren(el('option', { value: '' }, 'Sem categoria'), ...S.cats.filter(x => x.tipo === (tp.value === 'receita' ? 'receita' : 'despesa') && !x.arquivada).map(x => el('option', { value: x.id, selected: c && c.categoriaId === x.id }, (x.icone || '') + ' ' + x.nome)));
+    tp.onchange = atCat; atCat();
+    const rc = selecao(Object.keys(AG_REC).map(k => ({ v: k, t: AG_REC[k] })), c ? c.recorrencia : 'nenhuma');
+    const fm = el('input', { type: 'date', value: c ? c.fim : '', 'aria-label': 'Repetir até' });
+    const lb = el('input', { type: 'number', min: '0', max: '30', value: c ? c.lembreteDias : 3, 'aria-label': 'Lembrar dias antes' });
+    formBox.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, c ? 'Editar item da agenda' : 'Novo item na agenda'),
+      el('form', { class: 'f', onsubmit: tentar(async () => {
+        const v = vl.value.trim() ? parseValor(vl.value) : 0; if (!isFinite(v) || v < 0) throw new Error('Valor inválido.');
+        await api('salvar_agenda', { id: c ? c.id : '', titulo: tit.value, tipo: tp.value, data: dt.value, valor: v, contaId: tp.value === 'compromisso' ? '' : cn.value, categoriaId: tp.value === 'compromisso' ? '' : ct.value, recorrencia: rc.value, fim: fm.value, lembreteDias: lb.value });
+        toast(c ? 'Item atualizado.' : 'Item adicionado.', 'ok'); await ir('agenda');
+      }) }, campo('Título', tit), campo('Tipo', tp), campo('Data', dt), campo('Valor (R$)', vl), campo('Conta', cn), campo('Categoria', ct), campo('Repetição', rc), campo('Repetir até (opcional)', fm), campo('Lembrar quantos dias antes', lb),
+        el('div', { style: 'display:flex;gap:8px;grid-column:1/-1;flex-wrap:wrap' }, el('button', { class: 'btn', type: 'submit' }, c ? 'Salvar alterações' : 'Adicionar'),
+          c ? el('button', { class: 'btn ghost', type: 'button', onclick: () => { editando = null; form(); } }, 'Cancelar edição') : ''),
+        el('p', { class: 'small mute', style: 'grid-column:1/-1;margin:0' }, 'Ao marcar uma conta ou receita como feita, o app cria o lançamento sozinho na conta escolhida.'))));
+  };
+  const bM = el('button', { type: 'button', class: 'on' }, 'Mês'), bL = el('button', { type: 'button' }, 'Lista');
+  const trocaModo = x => { modo = x; bM.className = x === 'mes' ? 'on' : ''; bL.className = x === 'lista' ? 'on' : ''; desenha(); };
+  bM.onclick = () => trocaModo('mes'); bL.onclick = () => trocaModo('lista');
+  const lembretes = dados.pendentes.length ? el('div', { class: 'card glass reveal', role: 'region', 'aria-label': 'Lembretes' }, el('h3', null, 'Lembretes'),
+    el('div', { class: 'lista' }, dados.pendentes.map(p => el('div', { class: 'item' },
+      el('span', { class: 'chip', style: p.situacao === 'atrasado' ? 'background:rgba(239,68,68,.25);color:#fecaca' : p.situacao === 'hoje' ? 'background:rgba(251,191,36,.25);color:#fde68a' : '' }, p.situacao === 'atrasado' ? 'Atrasado' : p.situacao === 'hoje' ? 'Hoje' : 'Em breve'),
+      el('div', { class: 't' }, el('b', null, p.titulo), el('span', { class: 'small mute' }, dataBR(p.data) + (p.valor ? ' · ' + brl(p.valor) : ''))),
+      el('button', { class: 'btn mini', type: 'button', onclick: tentar(async () => { const r = await api('concluir_agenda', { id: p.id, data: p.data, contaId: p.contaId }); toast(r.lancamento ? 'Feito — lançamento criado.' : 'Concluído.', 'ok'); avisaAlertas(r.alertas); await ir('agenda'); }) }, verbo(p.tipo)))))) : '';
+  // levar para o celular: assinatura de calendário (.ics)
+  const linkOut = el('div', { class: 'small', style: 'margin-top:10px;word-break:break-all' });
+  const mostraLink = async renovar => {
+    const r = await api('agenda_feed', { renovar: !!renovar });
+    const url = (CONFIG.API_URL || '') + '?feed=' + r.token;
+    linkOut.replaceChildren(el('code', null, url), el('div', { style: 'margin-top:8px' }, el('button', { class: 'btn ghost mini', type: 'button', onclick: tentar(async () => { await navigator.clipboard.writeText(url); toast('Link copiado.', 'ok'); }) }, 'Copiar link')));
+  };
+  const feed = el('div', { class: 'card glass reveal' }, el('h3', null, 'Levar a agenda para o celular'),
+    el('p', { class: 'mute' }, 'Gera um link de calendário (.ics). Ao assinar, suas contas e compromissos aparecem no calendário do telefone, com lembrete.'),
+    el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, el('button', { class: 'btn', type: 'button', onclick: tentar(() => mostraLink(false)) }, 'Gerar link'), el('button', { class: 'btn ghost', type: 'button', onclick: tentar(async () => { if (!confirm('O link antigo deixará de funcionar. Continuar?')) return; await mostraLink(true); }) }, 'Gerar novo link')),
+    linkOut,
+    el('ul', { class: 'small mute', style: 'padding-left:18px' }, el('li', null, 'Google Agenda: Outras agendas ▸ Por URL ▸ cole o link.'), el('li', null, 'iPhone: Ajustes ▸ Calendário ▸ Contas ▸ Adicionar conta ▸ Outra ▸ Calendário assinado.'),
+      el('li', null, 'Quem tiver o link vê sua agenda. Se vazar, gere um novo.'), el('li', null, 'O telefone atualiza por conta própria; o Google pode levar horas para refletir mudanças.')));
+  form(); desenha();
+  raiz.replaceChildren(lembretes, formBox, el('div', { class: 'card glass reveal' }, el('h3', null, 'Agenda de ', mesNome(S.mes, true)), el('div', { class: 'seg', style: 'margin-bottom:12px' }, bM, bL), corpoCal), feed);
+}
+
+/* ======================= limites de gastos ======================= */
+const NIVEL_TXT = { ok: ['Dentro do limite', '#22D3EE'], aviso: ['Atenção (80%)', '#fbbf24'], atingido: ['Limite atingido', '#fb923c'], excedido: ['Limite excedido', '#ef4444'] };
+async function vLimites(raiz) {
+  const [lims, alertas] = await Promise.all([api('listar_limites', { mes: S.mes }), api('listar_alertas')]);
+  const esc = selecao([{ v: 'geral', t: 'Gasto geral do mês' }, { v: 'conta', t: 'Uma conta' }, { v: 'cartao', t: 'Um cartão' }, { v: 'categoria', t: 'Uma categoria' }]);
+  const alvo = el('select', { 'aria-label': 'Alvo do limite' }), campoAlvo = campo('Qual?', alvo);
+  const val = el('input', { inputmode: 'decimal', placeholder: '0,00', required: true, autocomplete: 'off', 'aria-label': 'Limite' });
+  const atAlvo = () => {
+    const e = esc.value; campoAlvo.style.display = e === 'geral' ? 'none' : '';
+    const ops = e === 'conta' ? S.contas.filter(c => c.tipo !== 'cartao') : e === 'cartao' ? S.contas.filter(c => c.tipo === 'cartao') : S.cats.filter(c => c.tipo === 'despesa' && !c.arquivada);
+    alvo.replaceChildren(...(ops.length ? ops.map(o => el('option', { value: o.id }, (o.icone ? o.icone + ' ' : '') + o.nome)) : [el('option', { value: '' }, e === 'cartao' ? 'Crie uma conta do tipo Cartão' : 'Nada disponível')]));
+  };
+  esc.onchange = atAlvo; atAlvo();
+  const form = el('form', { class: 'f', onsubmit: tentar(async () => {
+    const v = parseValor(val.value); if (!(v > 0)) throw new Error('Informe um limite maior que zero.');
+    const r = await api('salvar_limite', { escopo: esc.value === 'cartao' ? 'conta' : esc.value, alvoId: esc.value === 'geral' ? '' : alvo.value, limite: v });
+    toast('Limite salvo.', 'ok'); avisaAlertas(r.alertas); await ir('limites');
+  }) }, campo('Onde vale', esc), campoAlvo, campo('Limite mensal (R$)', val), el('button', { class: 'btn', type: 'submit' }, 'Salvar limite'));
+  const itens = lims.length ? lims.sort((a, b) => b.pct - a.pct).map((l, i) => {
+    const n = NIVEL_TXT[l.nivel];
+    return el('div', { class: 'lim', style: '--i:' + i }, el('div', { class: 'row' }, el('b', null, (l.escopo === 'geral' ? '🌐 ' : l.cartao ? '💳 ' : l.escopo === 'conta' ? '🏦 ' : '🏷️ ') + l.nome),
+      el('span', { class: 'chip', style: 'background:' + n[1] + '33;color:#fff;border:1px solid ' + n[1] }, n[0]),
+      el('button', { class: 'x', 'aria-label': 'Excluir limite de ' + l.nome, onclick: tentar(async () => { if (!confirm('Excluir este limite?')) return; await api('excluir_limite', { id: l.id }); toast('Limite excluído.'); await ir('limites'); }) }, '×')),
+      el('div', { class: 'lim-barra', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.min(l.pct, 100), 'aria-label': l.nome + ' ' + l.pct + '%' }, el('i', { style: 'width:' + Math.min(l.pct, 100) + '%;background:' + n[1] }), el('u', { style: 'left:80%' })),
+      el('div', { class: 'small mute row' }, el('span', null, brl(l.gasto) + ' de ' + brl(l.limite) + ' (' + l.pct + '%)'), el('span', null, l.restante >= 0 ? 'Restam ' + brl(l.restante) : 'Passou ' + brl(-l.restante))));
+  }) : [el('div', { class: 'vazio' }, 'Nenhum limite definido. Crie o primeiro acima.')];
+  const hist = alertas.length ? alertas.map(a => el('div', { class: 'item' }, el('i', { class: 'dot', style: 'color:' + NIVEL_TXT[a.nivel][1] + ';background:' + NIVEL_TXT[a.nivel][1] }),
+    el('div', { class: 't' }, el('b', null, a.mensagem), el('span', { class: 'small mute' }, mesNome(a.mes, true) + ' · ' + a.criado.slice(8, 10) + '/' + a.criado.slice(5, 7) + ' ' + a.criado.slice(11, 16) + (a.enviado ? ' · enviado por ' + a.enviado : ''))))) : [el('div', { class: 'vazio' }, 'Nenhum alerta ainda.')];
+  raiz.replaceChildren(el('div', { class: 'card glass reveal' }, el('h3', null, 'Novo limite de gastos'), form,
+    el('p', { class: 'small mute', style: 'margin:10px 0 0' }, 'Vale para todos os meses. Você é avisado aos 80%, ao chegar em 100% e ao passar do limite. Só despesas contam.')),
+    el('div', { class: 'card glass reveal' }, el('h3', null, 'Limites de ', mesNome(S.mes, true)), el('div', { class: 'stack-lim' }, itens)),
+    el('div', { class: 'card glass reveal' }, el('h3', null, 'Histórico de alertas'), el('div', { class: 'lista' }, hist)));
+}
+
+/* ======================= exportar para Excel (Painel) ======================= */
+function cardExportar() {
+  const per = selecao([{ v: 'mes', t: 'Mês selecionado' }, { v: 'ano', t: 'Ano do mês selecionado' }, { v: 'tudo', t: 'Todo o histórico' }]);
+  const cn = selecao([{ v: '', t: 'Todas as contas' }, ...S.contas.map(c => ({ v: c.id, t: c.nome }))]);
+  const ct = selecao([{ v: '', t: 'Todas as categorias' }, ...S.cats.map(c => ({ v: c.id, t: c.nome + (c.tipo === 'receita' ? ' (receita)' : '') }))]);
+  const tp = selecao([{ v: '', t: 'Receitas e despesas' }, { v: 'receita', t: 'Só receitas' }, { v: 'despesa', t: 'Só despesas' }]);
+  const b = el('button', { class: 'btn', type: 'button' }, 'Exportar para Excel');
+  b.onclick = tentar(async () => {
+    const [y, m] = S.mes.split('-').map(Number);
+    const de = per.value === 'mes' ? S.mes + '-01' : per.value === 'ano' ? y + '-01-01' : '';
+    const ate = per.value === 'mes' ? S.mes + '-' + String(new Date(y, m, 0).getDate()).padStart(2, '0') : per.value === 'ano' ? y + '-12-31' : '';
+    b.disabled = true;
+    try {
+      const rows = await api('exportar_lancamentos', { de, ate, contaId: cn.value, categoriaId: ct.value, tipo: tp.value });
+      if (!rows.length) { toast('Nenhum lançamento nesse período e filtros.'); return; }
+      if (!window.RumoXlsx) throw new Error('Gerador de Excel não carregou. Recarregue a página.');
+      const bytes = RumoXlsx.criar(RumoXlsx.abasDeLancamentos(rows));
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      const a = el('a', { href: url, download: 'rumo-' + (per.value === 'mes' ? S.mes : per.value === 'ano' ? y : 'completo') + '.xlsx' });
+      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast(rows.length + ' lançamentos exportados.', 'ok');
+    } finally { b.disabled = false; }
+  });
+  return el('div', { class: 'card glass reveal' }, el('h3', null, 'Exportar para Excel'), el('p', { class: 'mute' }, 'Planilha .xlsx com as abas Lançamentos, Resumo por categoria e Resumo por conta.'),
+    el('div', { class: 'f' }, campo('Período', per), campo('Conta', cn), campo('Categoria', ct), campo('Tipo', tp), el('div', null, b)));
 }
 
 async function vCons(raiz) {

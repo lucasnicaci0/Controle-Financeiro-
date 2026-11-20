@@ -1,6 +1,6 @@
 /**
  * FINANÇAS DB — back-end em Google Apps Script + Google Planilhas
- * Versão 1.1.0
+ * Versão 1.2.0
  *
  * COMO USAR (resumo):
  *  1. Cole este arquivo em Extensões → Apps Script (script vinculado à planilha "Financas DB").
@@ -20,7 +20,7 @@
  * o que facilita trocar a planilha por outro banco no futuro.
  */
 
-var VERSAO = '1.1.0';
+var VERSAO = '1.2.0';
 
 var CONFIG = {
   CLIENT_ID: 'COLE_AQUI_O_ID_DO_CLIENTE_OAUTH',
@@ -42,11 +42,16 @@ var TABELAS = {
   Orcamentos:  ['Id', 'Email', 'CategoriaId', 'Mes', 'Limite'],
   Metas:       ['Id', 'Email', 'Nome', 'ValorAlvo', 'ValorAtual', 'Prazo', 'Criado'],
   // Reservada para a conversa com IA (fase 2). O motor de regras não grava aqui.
-  Consultor:   ['Id', 'Email', 'Data', 'Papel', 'Texto']
+  Consultor:   ['Id', 'Email', 'Data', 'Papel', 'Texto'],
+  // Fase 2
+  Agenda:      ['Id', 'Email', 'Titulo', 'Tipo', 'Data', 'Valor', 'ContaId', 'CategoriaId', 'Recorrencia', 'LembreteDias', 'Fim', 'Concluidos', 'Criado'],
+  Limites:     ['Id', 'Email', 'Escopo', 'AlvoId', 'Limite', 'Criado'],
+  Alertas:     ['Id', 'Email', 'Mes', 'LimiteId', 'Nivel', 'Gasto', 'Limite', 'Criado', 'Mensagem', 'Enviado'],
+  Feeds:       ['Email', 'Token', 'Criado']
 };
 
 // Colunas formatadas como texto: impedem que a planilha converta datas ou interprete fórmulas.
-var COLUNAS_TEXTO = ['Data', 'Mes', 'Prazo', 'Criado', 'UltimoAcesso', 'Nome', 'Descricao', 'Chave', 'Papel', 'Texto', 'Tags', 'Icone', 'Arquivada'];
+var COLUNAS_TEXTO = ['Data', 'Mes', 'Prazo', 'Criado', 'UltimoAcesso', 'Nome', 'Descricao', 'Chave', 'Papel', 'Texto', 'Tags', 'Icone', 'Arquivada', 'Titulo', 'Fim', 'Concluidos', 'Token', 'Mensagem', 'Enviado', 'Escopo', 'AlvoId'];
 
 var TIPOS_CONTA = ['corrente', 'poupanca', 'reserva', 'investimento', 'dinheiro', 'cartao'];
 
@@ -85,7 +90,14 @@ function categoriasPadrao_(email, existentes) {
 
 var memo_ = {}; // leituras memoizadas por requisição (cada execução começa zerada)
 
-function doGet() {
+function doGet(e) {
+  var tk = e && e.parameter && e.parameter.feed;
+  if (tk) {   // assinatura de calendário (.ics): o token secreto é a chave de acesso
+    memo_ = {};
+    var f = ler_('Feeds').filter(function (x) { return String(x.Token) === String(tk); })[0];
+    var ics = f ? feedIcs_(String(f.Email).toLowerCase()) : 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n';
+    return ContentService.createTextOutput(ics).setMimeType(ContentService.MimeType.ICAL);
+  }
   return saida_({ ok: true, nome: 'Financas DB', versao: VERSAO });
 }
 
@@ -120,7 +132,7 @@ function erro_(codigo, msg) {
 
 var LEITURAS = {
   listar_contas: 1, listar_categorias: 1, listar_lancamentos: 1, listar_orcamentos: 1,
-  listar_metas: 1, listar_tags: 1, resumo: 1, consultor: 1, exportar_dados: 1
+  listar_metas: 1, listar_tags: 1, listar_agenda: 1, listar_limites: 1, listar_alertas: 1, exportar_lancamentos: 1, resumo: 1, consultor: 1, exportar_dados: 1
 };
 
 function rotear_(corpo) {
@@ -477,6 +489,7 @@ var ACOES = {
     if (doUsuario_('Lancamentos', u.email).some(function (l) { return l.ContaId === id; })) {
       throw erro_('em_uso', 'A conta tem lançamentos. Apague-os antes.');
     }
+    limpaRefs_(u.email, 'conta', id);
     return excluirPorId_('Contas', u.email, id);
   },
 
@@ -523,6 +536,7 @@ var ACOES = {
       if (!alvo || alvo.Id === id || alvo.Tipo !== cat.Tipo) throw erro_('categoria_invalida', 'Escolha outra categoria do mesmo tipo (' + cat.Tipo + ').');
       reatribuir_(u.email, id, dest);
     }
+    limpaRefs_(u.email, 'categoria', id);
     return Object.assign(excluirPorId_('Categorias', u.email, id), { reatribuidos: lancs });
   },
   restaurar_categorias_padrao: function (u) {
@@ -550,7 +564,9 @@ var ACOES = {
     if (!id && doUsuario_('Lancamentos', u.email).length >= CONFIG.MAX_LANCAMENTOS_POR_USUARIO) {
       throw erro_('limite', 'Limite de lançamentos atingido.');
     }
-    return sLanc_(upsert_('Lancamentos', u.email, id, campos));
+    var salvo = sLanc_(upsert_('Lancamentos', u.email, id, campos));
+    salvo.alertas = campos.Tipo === 'despesa' ? verificarLimites_(u.email, [campos.Data.slice(0, 7)]) : [];
+    return salvo;
   },
   excluir_lancamento: function (u, d) { return excluirPorId_('Lancamentos', u.email, d.id); },
 
@@ -579,7 +595,98 @@ var ACOES = {
     });
     if (total + novos.length > CONFIG.MAX_LANCAMENTOS_POR_USUARIO) throw erro_('limite', 'Limite de lançamentos atingido.');
     acrescentar_('Lancamentos', novos);
-    return { importadas: novos.length, ignoradas: ignoradas, invalidas: invalidas };
+    var alertas = verificarLimites_(u.email, mesesDe_(novos.filter(function (n) { return n.Tipo === 'despesa'; }).map(function (n) { return n.Data; })));
+    return { importadas: novos.length, ignoradas: ignoradas, invalidas: invalidas, alertas: alertas };
+  },
+
+  /* ---- agenda ---- */
+  listar_agenda: function (u, d) {
+    var mes = mesOu_(d.mes), hoje = hoje_();
+    var itens = ocorrenciasLista_(u.email, mes + '-01', mes + '-' + ('0' + diasNoMes_(mes)).slice(-2));
+    var pend = ocorrenciasLista_(u.email, somarDias_(hoje, -60), somarDias_(hoje, 30)).filter(function (o) {
+      return !o.concluido && o.data <= somarDias_(hoje, o.lembreteDias);   // atrasados + os que entram na janela do lembrete
+    }).map(function (o) { o.situacao = o.data < hoje ? 'atrasado' : (o.data === hoje ? 'hoje' : 'proximo'); return o; });
+    return { mes: mes, hoje: hoje, itens: itens, pendentes: pend, definicoes: doUsuario_('Agenda', u.email).map(sAgenda_) };
+  },
+  salvar_agenda: function (u, d) {
+    var titulo = seguro_(d.titulo, 80);
+    if (!titulo) throw erro_('nome_invalido', 'Informe o título.');
+    var tipo = TIPOS_AGENDA.indexOf(d.tipo) >= 0 ? d.tipo : 'compromisso';
+    if (!dataOk_(d.data)) throw erro_('data_invalida', 'Data inválida.');
+    var rec = RECORRENCIAS.indexOf(d.recorrencia) >= 0 ? d.recorrencia : 'nenhuma';
+    var fim = d.fim ? String(d.fim) : '';
+    if (fim && (!dataOk_(fim) || fim < d.data)) throw erro_('data_invalida', 'A data final deve ser depois da inicial.');
+    var valor = d.valor === '' || d.valor === undefined ? 0 : num_(d.valor);
+    if (!(valor >= 0)) throw erro_('valor_invalido', 'Valor inválido.');
+    var contaId = String(d.contaId || ''), catId = String(d.categoriaId || '');
+    if (contaId && !doUsuario_('Contas', u.email).some(function (c) { return c.Id === contaId; })) throw erro_('conta_invalida', 'Conta inválida.');
+    if (catId && !doUsuario_('Categorias', u.email).some(function (c) { return c.Id === catId; })) throw erro_('categoria_invalida', 'Categoria inválida.');
+    var lem = Math.max(0, Math.min(30, Math.round(Number(d.lembreteDias === undefined || d.lembreteDias === '' ? 3 : d.lembreteDias)) || 0));
+    var id = String(d.id || '');
+    if (!id && doUsuario_('Agenda', u.email).length >= 1000) throw erro_('limite', 'Limite de itens da agenda atingido.');
+    return sAgenda_(upsert_('Agenda', u.email, id, { Titulo: titulo, Tipo: tipo, Data: d.data, Valor: valor, ContaId: contaId, CategoriaId: catId, Recorrencia: rec, LembreteDias: lem, Fim: fim }));
+  },
+  excluir_agenda: function (u, d) { return excluirPorId_('Agenda', u.email, d.id); },
+  // Marca uma ocorrência como feita. Conta/receita com valor gera o lançamento (uma vez só); desmarcar remove o lançamento gerado.
+  concluir_agenda: function (u, d) {
+    var a = doUsuario_('Agenda', u.email).filter(function (x) { return x.Id === String(d.id || ''); })[0];
+    if (!a) throw erro_('nao_encontrado', 'Item não encontrado.');
+    var dt = String(d.data || '');
+    if (!dataOk_(dt) || ocorrencias_(a, dt, dt).length !== 1) throw erro_('data_invalida', 'Essa data não é uma ocorrência do item.');
+    var feitos = feitos_(a), marcar = d.concluido !== false, chave = 'agenda:' + a.Id + ':' + dt, resp = { concluido: marcar, lancamento: null, alertas: [] };
+    var existente = doUsuario_('Lancamentos', u.email).filter(function (l) { return l.Chave === chave; })[0];
+    if (marcar) {
+      if (feitos.indexOf(dt) < 0) feitos.push(dt);
+      if (a.Tipo !== 'compromisso' && Number(a.Valor) > 0 && !existente) {
+        var contaId = String(d.contaId || a.ContaId || '');
+        if (!contaId) throw erro_('conta_necessaria', 'Escolha a conta usada neste pagamento.');
+        var v = validarLanc_(u.email, { tipo: a.Tipo === 'receita' ? 'receita' : 'despesa', valor: Number(a.Valor), data: dataOk_(d.pagoEm) ? d.pagoEm : hoje_(), contaId: contaId, categoriaId: a.CategoriaId, descricao: a.Titulo });
+        v.Chave = chave;
+        resp.lancamento = sLanc_(upsert_('Lancamentos', u.email, '', v));
+        if (v.Tipo === 'despesa') resp.alertas = verificarLimites_(u.email, [v.Data.slice(0, 7)]);
+      }
+    } else {
+      feitos = feitos.filter(function (x) { return x !== dt; });
+      if (existente) apagarLinha_('Lancamentos', existente._linha);
+    }
+    atualizar_('Agenda', a._linha, Object.assign({}, a, { Concluidos: feitos.sort().join(',') }));
+    return resp;
+  },
+  agenda_feed: function (u, d) { return { token: tokenFeed_(u.email, d.renovar === true) }; },
+
+  /* ---- limites de gastos ---- */
+  listar_limites: function (u, d) { return limitesDoMes_(u.email, mesOu_(d.mes)); },
+  salvar_limite: function (u, d) {
+    var esc = ['geral', 'conta', 'categoria'].indexOf(d.escopo) >= 0 ? d.escopo : '', alvo = esc === 'geral' ? '' : String(d.alvoId || '');
+    if (!esc) throw erro_('escopo_invalido', 'Escolha onde o limite vale.');
+    var lim = num_(d.limite);
+    if (!(lim > 0)) throw erro_('valor_invalido', 'Informe um limite maior que zero.');
+    if (esc === 'conta' && !doUsuario_('Contas', u.email).some(function (c) { return c.Id === alvo; })) throw erro_('conta_invalida', 'Conta inválida.');
+    if (esc === 'categoria' && !doUsuario_('Categorias', u.email).some(function (c) { return c.Id === alvo && c.Tipo === 'despesa'; })) throw erro_('categoria_invalida', 'Escolha uma categoria de despesa.');
+    var igual = doUsuario_('Limites', u.email).filter(function (l) { return l.Escopo === esc && l.AlvoId === alvo; })[0];
+    var id = String(d.id || (igual ? igual.Id : ''));
+    var r = upsert_('Limites', u.email, id, { Escopo: esc, AlvoId: alvo, Limite: lim });
+    var alertas = verificarLimites_(u.email, [hoje_().slice(0, 7)]);
+    return { id: r.Id, alertas: alertas };
+  },
+  excluir_limite: function (u, d) { return excluirPorId_('Limites', u.email, d.id); },
+  listar_alertas: function (u) {
+    return doUsuario_('Alertas', u.email).map(sAlerta_).sort(function (a, b) { return a.criado < b.criado ? 1 : -1; }).slice(0, 60);
+  },
+
+  /* ---- exportação (o site monta o .xlsx com estas linhas) ---- */
+  exportar_lancamentos: function (u, d) {
+    var de = dataOk_(d.de) ? d.de : '0000-01-01', ate = dataOk_(d.ate) ? d.ate : '9999-12-31', tag = norm_(d.tag || '');
+    var contas = {}, cats = {};
+    doUsuario_('Contas', u.email).forEach(function (c) { contas[c.Id] = c.Nome; });
+    doUsuario_('Categorias', u.email).forEach(function (c) { cats[c.Id] = c.Nome; });
+    return doUsuario_('Lancamentos', u.email).filter(function (l) {
+      var dt = String(l.Data);
+      return dt >= de && dt <= ate && (!d.tipo || l.Tipo === d.tipo) && (!d.contaId || l.ContaId === d.contaId) && (!d.categoriaId || l.CategoriaId === d.categoriaId) &&
+        (!tag || tagsDe_(l.Tags).some(function (t) { return norm_(t) === tag; }));
+    }).sort(function (a, b) { return String(a.Data) < String(b.Data) ? -1 : 1; }).slice(0, 20000).map(function (l) {
+      return { data: String(l.Data), tipo: l.Tipo, valor: Number(l.Valor), conta: contas[l.ContaId] || '', categoria: cats[l.CategoriaId] || 'Sem categoria', descricao: l.Descricao, tags: tagsDe_(l.Tags).join(', ') };
+    });
   },
 
   /* ---- orçamentos ---- */
@@ -638,6 +745,151 @@ var ACOES = {
     return { apagado: true };
   }
 };
+
+/* ======================= AGENDA (recorrência, concluir, feed .ics) ======================= */
+
+var TIPOS_AGENDA = ['compromisso', 'conta', 'receita'];
+var RECORRENCIAS = ['nenhuma', 'semanal', 'mensal', 'anual'];
+
+function somarDias_(iso, n) {
+  var p = iso.split('-').map(Number);
+  var d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + n));
+  return d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+}
+
+// Datas (AAAA-MM-DD) em que o item ocorre dentro de [de, ate].
+function ocorrencias_(it, de, ate) {
+  var ini = String(it.Data), fim = it.Fim ? String(it.Fim) : '', rec = it.Recorrencia || 'nenhuma', out = [];
+  var limite = (fim && fim < ate) ? fim : ate;
+  if (ini > limite) return out;
+  if (rec === 'nenhuma') { if (ini >= de) out.push(ini); return out; }
+  if (rec === 'semanal') {
+    var d = ini;
+    if (d < de) d = somarDias_(d, Math.ceil(diasEntre_(d, de) / 7) * 7);
+    for (; d <= limite && out.length < 400; d = somarDias_(d, 7)) out.push(d);
+    return out;
+  }
+  var dia = Number(ini.slice(8)), mesIni = ini.slice(0, 7), mes = de.slice(0, 7) > mesIni ? de.slice(0, 7) : mesIni;
+  for (var g = 0; mes <= limite.slice(0, 7) && g < 600; g++, mes = somarMes_(mes, 1)) {
+    if (rec === 'anual' && mes.slice(5) !== mesIni.slice(5)) continue;
+    var dd = mes + '-' + ('0' + Math.min(dia, diasNoMes_(mes))).slice(-2);
+    if (dd >= ini && dd >= de && dd <= limite) out.push(dd);
+  }
+  return out;
+}
+
+function sAgenda_(a) {
+  return { id: a.Id, titulo: a.Titulo, tipo: a.Tipo, data: String(a.Data), valor: Number(a.Valor) || 0, contaId: a.ContaId, categoriaId: a.CategoriaId,
+    recorrencia: a.Recorrencia || 'nenhuma', lembreteDias: a.LembreteDias === '' ? 3 : Number(a.LembreteDias), fim: a.Fim ? String(a.Fim) : '' };
+}
+function feitos_(a) { return String(a.Concluidos || '').split(',').filter(Boolean); }
+
+function ocorrenciasLista_(email, de, ate) {
+  var out = [];
+  doUsuario_('Agenda', email).forEach(function (a) {
+    var f = feitos_(a);
+    ocorrencias_(a, de, ate).forEach(function (dt) {
+      var o = sAgenda_(a); o.data = dt; o.concluido = f.indexOf(dt) >= 0; o.inicio = String(a.Data); out.push(o);
+    });
+  });
+  return out.sort(function (x, y) { return x.data < y.data ? -1 : (x.data > y.data ? 1 : (x.titulo < y.titulo ? -1 : 1)); });
+}
+
+function icsTxt_(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n'); }
+function icsData_(iso) { return iso.replace(/-/g, ''); }
+
+function feedIcs_(email) {
+  var L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Rumo//Agenda//PT-BR', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:Rumo - Agenda financeira', 'X-WR-TIMEZONE:' + CONFIG.FUSO];
+  var carimbo = agora_().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  var ico = { compromisso: '📌', conta: '💸', receita: '💰' };
+  doUsuario_('Agenda', email).forEach(function (a) {
+    var s = sAgenda_(a), f = feitos_(a), rec = { semanal: 'WEEKLY', mensal: 'MONTHLY', anual: 'YEARLY' }[s.recorrencia];
+    var titulo = (ico[s.tipo] || '') + ' ' + s.titulo + (s.valor ? ' (' + brl_(s.valor) + ')' : '') + (!rec && f.indexOf(s.data) >= 0 ? ' ✔' : '');
+    L.push('BEGIN:VEVENT', 'UID:' + a.Id + '@rumo', 'DTSTAMP:' + carimbo, 'DTSTART;VALUE=DATE:' + icsData_(s.data), 'DTEND;VALUE=DATE:' + icsData_(somarDias_(s.data, 1)), 'SUMMARY:' + icsTxt_(titulo));
+    if (rec) L.push('RRULE:FREQ=' + rec + (s.fim ? ';UNTIL=' + icsData_(s.fim) : ''));
+    if (s.lembreteDias >= 0) L.push('BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + icsTxt_(s.titulo), 'TRIGGER:-P' + s.lembreteDias + 'D', 'END:VALARM');
+    L.push('END:VEVENT');
+  });
+  L.push('END:VCALENDAR');
+  return L.join('\r\n') + '\r\n';
+}
+
+function tokenFeed_(email, renovar) {
+  var f = doUsuario_('Feeds', email)[0];
+  if (f && !renovar) return f.Token;
+  var t = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+  if (f) atualizar_('Feeds', f._linha, Object.assign({}, f, { Token: t })); else acrescentar_('Feeds', [{ Email: email, Token: t, Criado: agora_() }]);
+  return t;
+}
+
+// Ao excluir conta/categoria: remove os limites dela e solta a referência na agenda.
+function limpaRefs_(email, tipo, id) {
+  doUsuario_('Limites', email).filter(function (l) { return l.Escopo === tipo && l.AlvoId === id; })
+    .map(function (l) { return l._linha; }).sort(function (a, b) { return b - a; }).forEach(function (n) { apagarLinha_('Limites', n); });
+  var campo = tipo === 'conta' ? 'ContaId' : 'CategoriaId';
+  doUsuario_('Agenda', email).filter(function (a) { return a[campo] === id; }).forEach(function (a) { var o = Object.assign({}, a); o[campo] = ''; atualizar_('Agenda', a._linha, o); });
+}
+
+/* ======================= LIMITES DE GASTOS E ALERTAS ======================= */
+
+var NIVEIS = { aviso: 'Atenção: 80% do limite', atingido: 'Limite atingido', excedido: 'Limite excedido' };
+
+function nivel_(gasto, limite) {
+  if (!(limite > 0)) return 'ok';
+  var c = Math.round(gasto * 100), l = Math.round(limite * 100);
+  if (c > l) return 'excedido';
+  if (c === l) return 'atingido';
+  if (c * 100 >= l * 80) return 'aviso';
+  return 'ok';
+}
+
+function limitesDoMes_(email, mes) {
+  var gastos = movimentos_(email).filter(function (m) { return m.tipo === 'despesa' && m.data.slice(0, 7) === mes; });
+  var contas = doUsuario_('Contas', email), cats = doUsuario_('Categorias', email);
+  return doUsuario_('Limites', email).map(function (l) {
+    var g = gastos.filter(function (m) { return l.Escopo === 'geral' || (l.Escopo === 'conta' && m.contaId === l.AlvoId) || (l.Escopo === 'categoria' && m.categoriaId === l.AlvoId); })
+      .reduce(function (s, m) { return s + m.valor; }, 0);
+    g = Math.round(g * 100) / 100;
+    var lim = Number(l.Limite), nome = 'Gasto geral', tipoConta = '';
+    if (l.Escopo === 'conta') { var c = contas.filter(function (x) { return x.Id === l.AlvoId; })[0]; nome = c ? c.Nome : '(conta removida)'; tipoConta = c ? c.Tipo : ''; }
+    if (l.Escopo === 'categoria') { var k = cats.filter(function (x) { return x.Id === l.AlvoId; })[0]; nome = k ? k.Nome : '(categoria removida)'; }
+    return { id: l.Id, escopo: l.Escopo, alvoId: l.AlvoId, nome: nome, cartao: tipoConta === 'cartao', limite: lim, gasto: g, restante: Math.round((lim - g) * 100) / 100,
+      pct: lim > 0 ? Math.round(g / lim * 100) : 0, nivel: nivel_(g, lim), mes: mes };
+  });
+}
+
+// Registra (uma vez por mês/limite/nível) os alertas novos e tenta avisar. Chamar só em ações de escrita.
+function verificarLimites_(email, meses) {
+  var novos = [];
+  (meses || []).forEach(function (mes) {
+    var ja = doUsuario_('Alertas', email);
+    limitesDoMes_(email, mes).forEach(function (l) {
+      if (l.nivel === 'ok') return;
+      if (ja.some(function (a) { return String(a.Mes) === mes && a.LimiteId === l.id && a.Nivel === l.nivel; })) return;
+      var msg = NIVEIS[l.nivel] + ' — ' + l.nome + ': ' + brl_(l.gasto) + ' de ' + brl_(l.limite) + ' (' + l.pct + '%).';
+      var al = { Id: Utilities.getUuid(), Email: email, Mes: mes, LimiteId: l.id, Nivel: l.nivel, Gasto: l.gasto, Limite: l.limite, Criado: agora_(), Mensagem: msg, Enviado: '' };
+      al.Enviado = notificar_(email, al);
+      acrescentar_('Alertas', [al]);
+      novos.push(sAlerta_(al));
+    });
+  });
+  return novos;
+}
+
+// Ponto de extensão para envio fora do app. Hoje: e-mail opcional (Propriedade do script NOTIFICAR_EMAIL = sim).
+// Para WhatsApp/push, troque o corpo desta função por uma chamada ao serviço escolhido.
+function notificar_(email, alerta) {
+  try {
+    if (typeof MailApp !== 'undefined' && PropertiesService.getScriptProperties().getProperty('NOTIFICAR_EMAIL') === 'sim') {
+      MailApp.sendEmail(email, 'Rumo: ' + NIVEIS[alerta.Nivel], alerta.Mensagem);
+      return 'email';
+    }
+  } catch (e) { console.error(e); }
+  return '';
+}
+
+function sAlerta_(a) { return { id: a.Id, mes: String(a.Mes), limiteId: a.LimiteId, nivel: a.Nivel, gasto: Number(a.Gasto), limite: Number(a.Limite), criado: a.Criado, mensagem: a.Mensagem, enviado: a.Enviado || '' }; }
+function mesesDe_(datas) { var m = {}; datas.forEach(function (d) { m[String(d).slice(0, 7)] = 1; }); return Object.keys(m).sort().slice(-12); }
 
 /* ======================= RESUMO DO PAINEL ======================= */
 
