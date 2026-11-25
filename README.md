@@ -98,3 +98,11 @@ O canvas respeita o `devicePixelRatio` (limite 1,5x / 2x / 3x conforme a GPU), o
 - **Assistente de IA:** tela de chat + `js/servicos/assistente.js` (prompt, ferramentas, provedores). Modo simulado ativo; IA real documentada em `docs/assistente-ia.md`.
 - **Preparados (sem funcionar ainda):** leitura de notificações (precisa de app Android nativo; `docs/notificacoes-android.md`) e agente de WhatsApp (API oficial; `docs/whatsapp.md`).
 - Testes: `node apps-script/teste_gs7.js`, `node apps-script/teste_servicos.js`, `node apps-script/teste_fase5_ui.js`.
+
+## Cérebro 3D — arquitetura em camadas
+- **3D** (`js/cerebro/scene.js`, `camera.js`, `brain.js`…): só renderiza e gira o modelo. Recebe o *palco* (`scene.setStage`) e desloca a lente da câmera; não conhece HTML.
+- **Interface** (`cards.js`): cartões e textos. Lado e ordem são **fixos** (`LADOS` em `layout.js`); a rotação não os move. Só os pontos de navegação e as linhas, que fazem parte do modelo, acompanham a rotação.
+- **Controle** (`estado.js`, `controle.js`): `BrainState` guarda apenas ligado/desligado (`localStorage: rumo_cerebro3d`), independente de dados e telas. Botão "Cérebro 3D" no cabeçalho da Jornada e interruptor em Opções › Efeitos.
+- **Layout** (`layout.js`): calcula o palco livre (entre cabeçalho e abas), publica `--palco-top/--palco-bottom` e a cobertura da folha de **Planos**, que é opaca: a camada de cartões é recortada na borda dela e o 3D pausa quando ela cobre o palco.
+- **Desligado:** canvas oculto, render parado, fundo 2D, Jornada vira grade de cartões + Planos, sem espaço vazio. **Religado:** o motor retoma, sem recriar elementos.
+- Teste: `node apps-script/teste_cerebro_ui.js` (7 cenários, desktop e celular).

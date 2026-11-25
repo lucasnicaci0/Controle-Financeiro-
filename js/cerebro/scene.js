@@ -133,6 +133,11 @@ export class Scene {
     if (mode !== this.mode) this.cam.startWarp();
     this.mode = mode; if (focusKey) this.focusKey = focusKey; this.dirty = true;
   }
+  /** Palco: retângulo (px de tela) onde o cérebro deve ficar centralizado. Só afeta a câmera do modelo. */
+  setStage(st, imediato) {
+    const W = this.cssW, H = this.cssH, cx = (st.left + st.right) / 2, cy = (st.top + st.bottom) / 2;
+    this.cam.setLens(cx / W * 2 - 1, 1 - cy / H * 2, clamp((st.bottom - st.top) / H, 0.62, 1), imediato); this.dirty = true;
+  }
   setProgress(p) { this.progress = clamp(p, 0, 1); this.dirty = true; }
   setHover(i) { this.hover = i; this.dirty = true; }
   setMouse(x, y) { this.cam.setMouse(x, y); this.dirty = true; }
@@ -162,7 +167,7 @@ export class Scene {
       requestAnimationFrame(loop);
       if (this.lost || document.hidden) { last = now; return; }
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
-      const busy = this.cam.fly || this.cam.warpT >= 0 || Math.abs(this.cam.pS - this.progress) > 0.0004 || this.assemble < 1;
+      const busy = this.cam.fly || this.cam.warpT >= 0 || Math.abs(this.cam.pS - this.progress) > 0.0004 || this.assemble < 1 || this.cam.lensMoving;
       if (this.reduced && !this.dirty && !busy) return;
       this.dirty = false;
       this.frame(dt, now);

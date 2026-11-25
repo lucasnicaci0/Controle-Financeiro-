@@ -148,7 +148,28 @@ button.chip{color:inherit;border:1px solid var(--line);cursor:pointer;font:inher
 .ico-grade button{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);border-radius:10px;padding:6px;font-size:1.2rem;cursor:pointer}
 .ico-grade button.on{border-color:var(--ciano,#22D3EE);background:rgba(34,211,238,.18)}
 .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.tags em{font-style:normal;font-size:.72rem;padding:1px 8px;border-radius:999px;background:rgba(139,92,246,.22);color:#e4dbff}
-.planos{position:relative;z-index:6;max-width:1000px;margin:0 auto;padding:40px 16px 90px}
+.top-r{display:flex;align-items:center;gap:12px}
+.cb-toggle{display:inline-flex;align-items:center;gap:8px;padding:5px 7px 5px 11px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--ink);cursor:pointer;font:inherit;font-size:.85rem;transition:background .25s,border-color .25s,box-shadow .25s}
+.cb-toggle:hover{background:rgba(255,255,255,.1)}.cb-toggle:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+.cb-toggle .t{position:relative;width:36px;height:20px;border-radius:99px;background:rgba(255,255,255,.2);transition:background .25s}
+.cb-toggle .t::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .25s cubic-bezier(.2,.9,.3,1.2)}
+.cb-toggle.on{border-color:color-mix(in srgb,var(--a) 60%,transparent);box-shadow:0 0 18px color-mix(in srgb,var(--a) 28%,transparent)}
+.cb-toggle.on .t{background:linear-gradient(90deg,var(--btn1),var(--btn2))}.cb-toggle.on .t::after{transform:translateX(16px);background:#0B0618}
+body.in-app .cb-toggle,html.cb-sem-3d .cb-toggle{display:none}
+@media(max-width:620px){.cb-lbl,.cb-toggle .t{display:none}.cb-toggle{position:relative;width:38px;height:38px;padding:0;justify-content:center}.top-r{gap:8px}.mes b{min-width:0;font-size:.9rem}.mes{gap:4px}
+  .cb-toggle:not(.on) svg{opacity:.5}.cb-toggle:not(.on)::after{content:'';position:absolute;width:22px;height:2px;border-radius:2px;background:currentColor;transform:rotate(-45deg);opacity:.8}}
+/* Jornada: folha de Planos — opaca, nunca sobre o cérebro (o motor recorta e pausa o 3D quando ela sobe) */
+.planos{position:relative;z-index:6;min-height:calc(100svh - var(--palco-top,0px) - var(--abaixo-planos,112px));box-sizing:border-box;padding:30px 16px 120px;background:linear-gradient(180deg,#0C0520,#05020A 45%);border-radius:28px 28px 0 0;box-shadow:0 -28px 60px rgba(0,0,0,.6),inset 0 1px 0 rgba(167,139,250,.28)}
+.planos-in{max-width:1000px;margin:0 auto}
+/* Jornada com o cérebro desligado: mesmos dados em grade, sem espaço vazio */
+.jhead{display:none}
+html.cerebro-off .jhead{display:block;text-align:center;padding:26px 0 8px}
+html.cerebro-off .jhead h2{margin:0 0 6px;font-size:clamp(1.6rem,4vw,2.4rem);letter-spacing:-.02em}
+html.cerebro-off .jhead p{margin:0;color:var(--mute)}
+html.cerebro-off .jlista{padding:14px 0 6px}
+html.cerebro-off .jspacer{display:none}
+html.cerebro-off #cerebro-ui{display:none}
+html.cerebro-off .planos{min-height:0;background:none;box-shadow:none;border-radius:0;padding:36px 0 90px}
 .planos h2{text-align:center;margin:0 0 12px}.planos .seg{margin:0 auto 18px;display:flex;width:fit-content}
 .planos-grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
 .plano.destaque{outline:2px solid #8B5CF6}.plano .preco{font-size:1.8rem;font-weight:700}.plano .preco small{font-size:.9rem;font-weight:400;color:var(--mute)}
@@ -282,6 +303,11 @@ body.in-app #scrim{opacity:1}
         <b id="mlabel" aria-live="polite"></b>
         <button class="icon" id="mnext" aria-label="Próximo mês">›</button>
       </div>
+      <div class="top-r">
+      <button type="button" id="cb-toggle" class="cb-toggle on" role="switch" aria-checked="true" aria-label="Cérebro 3D" title="Desativar o cérebro 3D">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4.2"/><ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(-24 12 12)"/></svg>
+        <span class="cb-lbl">Cérebro 3D</span><span class="t" aria-hidden="true"></span>
+      </button>
       <div class="user">
         <button class="avatar" id="avatar" aria-haspopup="true" aria-expanded="false" aria-label="Conta"></button>
         <div class="menu glass" id="menu" hidden>
@@ -292,6 +318,7 @@ body.in-app #scrim{opacity:1}
           <button id="apagar">Apagar minha conta</button>
           <button id="sair">Sair</button>
         </div>
+      </div>
       </div>
     </header>
 
@@ -959,6 +986,7 @@ async function vOpcoes(raiz) {
       el('div', { style: 'margin-top:12px' }, el('span', { class: 'small mute' }, 'Cantos'), el('div', null, segOpt('raio', RAIOS, 'Arredondamento dos cantos'))),
       el('div', { style: 'margin-top:14px' }, restSec(['dens', 'raio'], 'Layout'))),
     el('section', { class: 'card glass' }, el('h3', null, 'Efeitos'),
+      window.CerebroEstado && !document.documentElement.classList.contains('cb-sem-3d') ? sw('s-cb3d', 'Cérebro 3D', 'Liga ou desliga o cérebro e toda a animação 3D. Desligado, a Jornada vira uma grade de cartões e o app fica mais leve.', window.CerebroEstado.ativo, v => window.CerebroEstado.set(v)) : '',
       sw('s-flut', 'Artefatos voadores', 'Orbes, anéis e faíscas que flutuam ao redor do cérebro.', OPT.flutuantes, v => { OPT.flutuantes = v; rFlut.disabled = !v; salva(); }),
       el('div', null, el('span', { class: 'small mute' }, 'Quantidade'), rFlut),
       sw('s-uni', 'Fundo universo', 'Estrelas, galáxias e planetas distantes, em camadas.', OPT.universo, v => { OPT.universo = v; rUni.disabled = !v; salva(); }),
@@ -989,13 +1017,14 @@ function planosSecao() {
   };
   bM.onclick = () => { anual = false; desenha(); }; bA.onclick = () => { anual = true; desenha(); };
   desenha();
-  return el('section', { class: 'planos', 'aria-label': 'Planos' }, el('h2', null, 'Planos'), el('div', { class: 'seg' }, bM, bA), grade,
-    el('p', { class: 'small mute' }, 'Por enquanto todos usam o plano Grátis. A cobrança ainda não está ativa.'));
+  return el('section', { class: 'planos', 'aria-label': 'Planos' }, el('div', { class: 'planos-in' }, el('h2', null, 'Planos'), el('div', { class: 'seg' }, bM, bA), grade,
+    el('p', { class: 'small mute' }, 'Por enquanto todos usam o plano Grátis. A cobrança ainda não está ativa.')));
 }
 
 async function vJornada(raiz) {
   const spacer = el('div', { class: 'jspacer' }), lista = el('div', { class: 'jlista' });
-  raiz.append(el('div', { class: 'jornada' }, spacer, lista, planosSecao()));
+  const cab = el('div', { class: 'jhead' }, el('h2', null, 'Seu cérebro financeiro'), el('p', null, 'Cada região do cérebro representa uma parte do seu dinheiro. Toque para abrir.'));
+  raiz.append(el('div', { class: 'jornada' }, cab, spacer, lista, planosSecao()));
   CB.call('enterJourney', spacer, lista);
   Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes }).catch(() => null)]).then(([r, c]) => CB.call('setData', r, c)).catch(() => { /* cartões ficam sem números */ });
 }

@@ -7,6 +7,7 @@ import { REGIONS } from './regions.js';
 import { STOPS } from './camera.js';
 import { THEME } from './theme.js';
 import { clamp } from './math.js';
+import { LADOS, ladoDe } from './layout.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const mk = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
@@ -39,7 +40,7 @@ export function regionData(res, con, brl) {
 
 export class Cards {
   constructor(scene, root, opts) {
-    this.scene = scene; this.root = root; this.onOpen = opts.onOpen; this.fmt = opts.brl; this.tabName = opts.tabName || (t => t); this.diving = false;
+    this.scene = scene; this.root = root; this.onOpen = opts.onOpen; this.fmt = opts.brl; this.tabName = opts.tabName || (t => t); this.diving = false; this.layout = opts.layout;
     this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.active = false; this.spacer = null; this.hoverBrain = -1; this.hoverCard = -1; this.pinned = -1; this.pinUntil = 0;
     this.ignoreScroll = 0; this.data = {}; this.lastFrame = performance.now();
@@ -205,22 +206,23 @@ export class Cards {
       if (h >= 0 && !mob) want[h] = 1;
     }
 
-    // posições
-    const pos = new Array(9).fill(null), pad = Math.max(14, W * 0.045), top = W >= 620 ? 160 : 92, bot = H - (mob ? 24 : 40);
-    const list = REGIONS.map((_, i) => i).filter(i => want[i] > 0 && A[i].ok);
+    // posições — ESTÁTICAS: lado e ordem vêm do layout (LADOS) e o espaço vem do palco; a rotação do modelo não entra aqui.
+    const pos = new Array(9).fill(null), st = this.layout.stage, pad = Math.max(14, W * 0.045), top = st.top, bot = st.bottom;
+    const list = REGIONS.map((_, i) => i).filter(i => want[i] > 0);   // visibilidade não depende da rotação
     if (mob) {
-      list.forEach(i => { const [cw, ch] = this.cw[i]; pos[i] = { x: 12, y: H - ch - 92, w: W - 24, side: 'b' }; });
+      list.forEach(i => { const [cw, ch] = this.cw[i]; pos[i] = { x: 12, y: bot - ch - 8, w: W - 24, side: 'b' }; });
     } else if (over) {
-      const s = list.slice().sort((a, b) => A[a].x - A[b].x), half = Math.ceil(s.length / 2), L = s.slice(0, half).sort((a, b) => A[a].y - A[b].y), R = s.slice(half).sort((a, b) => A[a].y - A[b].y);
-      [[L, 'l'], [R, 'r']].forEach(([col, side]) => {
-        const n = col.length, hh = Math.min(...col.map(i => this.cw[i][1])) || 100, gap = Math.max(8, Math.min(14, (bot - top - n * hh) / Math.max(1, n - 1)));
+      ['l', 'r'].forEach(side => {
+        const col = LADOS[side].map(id => REGIONS.findIndex(r => r.id === id)).filter(i => list.includes(i)), n = col.length;
+        if (!n) return;
+        const hh = Math.min(...col.map(i => this.cw[i][1])) || 100, gap = Math.max(8, Math.min(14, (bot - top - n * hh) / Math.max(1, n - 1)));
         let y = top + Math.max(0, (bot - top - (n * hh + (n - 1) * gap)) / 2);
         col.forEach(i => { const [cw] = this.cw[i]; pos[i] = { x: side === 'l' ? pad : W - cw - pad, y, side }; y += hh + gap; });
       });
     } else {
       list.forEach(i => {
-        const [cw, ch] = this.cw[i], left = A[i].x > W * 0.52;
-        pos[i] = { x: left ? pad : W - cw - pad, y: clamp(A[i].y - ch / 2, top, Math.max(top, bot - ch)), side: left ? 'l' : 'r' };
+        const [cw, ch] = this.cw[i], side = ladoDe(REGIONS[i].id);
+        pos[i] = { x: side === 'l' ? pad : W - cw - pad, y: clamp((top + bot) / 2 - ch / 2, top, Math.max(top, bot - ch)), side };
       });
     }
 

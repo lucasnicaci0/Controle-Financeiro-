@@ -17,7 +17,7 @@ html:not(.gl-on) #gl{display:none}
 .ld-txt{font-size:0.8333rem;color:var(--mute)}
 
 /* camada de cartões */
-#cerebro-ui{position:fixed;inset:0;z-index:2;pointer-events:none;overflow:hidden}
+#cerebro-ui{position:fixed;inset:0;z-index:2;pointer-events:none;overflow:hidden;transition:opacity .2s linear}
 .rlines{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .rline{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;opacity:0;filter:drop-shadow(0 0 5px currentColor) drop-shadow(0 0 12px rgba(255,77,166,.55))}
 .rdot{opacity:0;filter:drop-shadow(0 0 8px currentColor)}
@@ -42,11 +42,11 @@ html:not(.gl-on) #gl{display:none}
 #cerebro-ui.over .rc .open{margin-top:8px;padding:5px 12px}
 
 /* abertura */
-.jhero{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;padding:0 24px;pointer-events:none}
-.jhero .jt{margin:0 0 10px;font-size:clamp(2.2667rem,6.4vw,5.0667rem);line-height:1.04;letter-spacing:-.03em;
+.jhero{position:absolute;left:0;right:0;bottom:calc(var(--palco-bottom,0px) + 6px);transform:none;text-align:center;padding:0 24px;pointer-events:none}
+.jhero .jt{margin:0 0 8px;font-size:clamp(1.9rem,4.6vw,3.6rem);line-height:1.04;letter-spacing:-.03em;
   color:#F5F3FF;text-shadow:0 0 40px rgba(255,77,166,.5),0 0 90px rgba(139,92,246,.6)}
 .jhero .jp{margin:0 auto;max-width:520px;color:var(--ink);opacity:.86;font-size:clamp(0.9333rem,2.1vw,1.2rem)}
-.jhint{margin-top:22px;font-size:1.4667rem;color:#fff;text-shadow:0 0 12px #000;animation:bob 1.8s ease-in-out infinite}
+.jhint{margin-top:8px;font-size:1.2rem;color:#fff;text-shadow:0 0 12px #000;animation:bob 1.8s ease-in-out infinite}
 @keyframes bob{50%{transform:translateY(8px)}}
 .rback{position:absolute;right:max(16px,3vw);bottom:max(22px,4vh);pointer-events:auto;opacity:0;visibility:hidden;transition:opacity .4s,visibility .4s}
 .rback.show{opacity:1;visibility:visible}

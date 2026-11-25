@@ -36,7 +36,9 @@ export class Camera {
     this.mouse = [0, 0]; this.mouseS = [0, 0];
     this.fly = null; this.pS = 0; this.stopF = 0; this.warp = 0; this.warpT = -1; this.time = 0;
     this.view = new Float32Array(16); this.proj = new Float32Array(16); this.eye = [0, 0, 5]; this.focus = 5; this.bokeh = .2; this.fovNow = 40;
+    this.lens = { sx: 0, sy: 0, k: 1 }; this.lensTgt = { sx: 0, sy: 0, k: 1 }; this.lensMoving = false;   // centraliza/ajusta o cérebro ao palco
   }
+  setLens(sx, sy, k, now) { this.lensTgt = { sx, sy, k }; if (now) Object.assign(this.lens, this.lensTgt); }
 
   setMouse(x, y) { this.mouse[0] = x; this.mouse[1] = y; }
   startWarp() { this.warpT = 0; }
@@ -105,5 +107,10 @@ export class Camera {
     this.fovNow = fv;
     this.view = m4.lookAt(eye, tg, [0, 1, 0]);
     this.proj = m4.perspective(this.fovNow * Math.PI / 180, aspect, 0.03, 80);
+    const L = this.lens, T = this.lensTgt, f = 1 - Math.exp(-dt * 7);
+    L.sx += (T.sx - L.sx) * f; L.sy += (T.sy - L.sy) * f; L.k += (T.k - L.k) * f;
+    this.lensMoving = Math.abs(T.sx - L.sx) + Math.abs(T.sy - L.sy) + Math.abs(T.k - L.k) > 0.0008;
+    if (!this.lensMoving) { L.sx = T.sx; L.sy = T.sy; L.k = T.k; }
+    this.proj[0] *= L.k; this.proj[5] *= L.k; this.proj[8] = -L.sx; this.proj[9] = -L.sy;   // lente: só o modelo se move; HTML não muda
   }
 }
