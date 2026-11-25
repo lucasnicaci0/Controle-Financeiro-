@@ -1,34 +1,11 @@
-// Serviços puros (sem DOM): notificações, WhatsApp e assistente. Uso: node teste_servicos.js
+// Serviços puros (sem DOM): leitura de notificações do banco (o WhatsApp e o assistente agora são o agente Rumi: teste_agente_core.js e teste_gs8.js). Uso: node teste_servicos.js
 global.window = undefined;
-require('../js/servicos/notificacoes.js'); require('../js/servicos/whatsapp.js'); require('../js/servicos/assistente.js');
+require('../js/servicos/notificacoes.js');
 let f = 0; const ok = (n, c, x) => { console.log((c ? '  ok   ' : '  FALHA ') + n + (!c ? ' -> ' + JSON.stringify(x) : '')); if (!c) f++; };
-const N = RumoNotificacoes, W = RumoWhatsApp, A = RumoAssistente;
+const N = RumoNotificacoes;
 let r = N.interpretar({ texto: 'Compra aprovada de R$ 45,90 em IFOOD', pacote: 'com.nu.production' });
 ok('notificação de compra', r && r.tipo === 'despesa' && r.valor === 45.9 && r.descricao === 'IFOOD' && r.banco === 'Nubank', r);
 r = N.interpretar({ texto: 'Pix recebido R$ 1.250,00 de Maria' }); ok('pix recebido = receita', r && r.tipo === 'receita' && r.valor === 1250, r);
 ok('código OTP é ignorado', N.interpretar({ texto: 'Seu código é 123456' }) === null && N.interpretar({ texto: 'Promoção: ganhe R$ 10,00' }) === null);
 ok('notificações: fonte indisponível sem app nativo', N.FonteNotificacoes.disponivel() === false);
-r = W.interpretar('gastei 50 no mercado'); ok('whatsapp: gastei 50 no mercado', r.comando === 'lancar' && r.lancamento.valor === 50 && r.lancamento.tipo === 'despesa' && r.lancamento.descricao === 'mercado' && r.confirmar, r);
-ok('whatsapp: recebi 3.000 de salário', W.interpretar('Recebi 3.000 de salário').lancamento.valor === 3000 && W.interpretar('Recebi 3.000 de salário').lancamento.tipo === 'receita');
-ok('whatsapp: 12,50 e R$ 1.234,56', W.interpretar('gastei 12,50 no café').lancamento.valor === 12.5 && W.interpretar('paguei R$ 1.234,56 de luz').lancamento.valor === 1234.56);
-ok('whatsapp: comandos', W.interpretar('saldo').comando === 'saldo' && W.interpretar('resumo').comando === 'resumo' && W.interpretar('blablabla').comando === 'desconhecido');
-const hook = { entry: [{ changes: [{ value: { messages: [{ from: '5511999999999', id: 'wamid.1', timestamp: '170000', type: 'text', text: { body: 'saldo' } }, { type: 'image', from: '1' }], statuses: [{}] } }] }] };
-ok('webhook normalizado (só texto)', JSON.stringify(W.normalizarWebhook(hook)) === JSON.stringify([{ de: '5511999999999', texto: 'saldo', id: 'wamid.1', quando: 170000 }]));
-ok('webhook inválido não quebra', W.normalizarWebhook(null).length === 0 && W.normalizarWebhook({}).length === 0);
-(async () => {
-  const dados = { resumo: { receitas: 5000, despesas: 1200, saldoMes: 3800, porCategoria: [{ nome: 'Mercado', valor: 700 }, { nome: 'Lazer', valor: 500 }] }, listar_contas: [{ nome: 'Carteira', tipo: 'dinheiro', saldo: 100 }], listar_limites: [{ nome: 'Gasto geral', gasto: 800, limite: 1000, pct: 80 }], listar_metas: [], cambio_cotacoes: { cotacoes: { USD: { venda: 5.43, compra: 5.42, pct: 0.4 }, EUR: { venda: 6.27, compra: 6.25, pct: -0.2 } }, aviso: 'Valores de referência.' }, listar_lancamentos: [{ data: '2026-11-02', descricao: 'Café', tipo: 'despesa', valor: 10 }] };
-  const chamadas = []; const api = async a => { chamadas.push(a); return dados[a]; };
-  const p = async t => A.responder(t, { api });
-  let x = await p('quanto gastei este mês?'); ok('assistente: gastos usam resumo e citam categorias', /gastou R\$\s?1\.200,00/.test(x.texto) && /Mercado/.test(x.texto) && x.ferramentasUsadas[0] === 'resumo_mes', x);
-  x = await p('qual meu saldo'); ok('assistente: saldo', /Saldo total: R\$\s?100,00/.test(x.texto));
-  x = await p('cotação do euro'); ok('assistente: cotação pede a moeda certa', x.ferramentasUsadas[0] === 'cotacao' && /EUR/.test(x.texto) && /de referência/.test(x.texto), x);
-  x = await p('devo comprar ações?'); ok('assistente: não recomenda investimento e não consulta dados', /Não faço recomendação/.test(x.texto) && x.ferramentasUsadas.length === 0, x);
-  x = await p('metas'); ok('assistente: sem metas orienta criar', /não tem metas/.test(x.texto));
-  let e; try { await p('   '); } catch (er) { e = er; } ok('assistente: mensagem vazia é recusada', !!e);
-  ok('ferramentas são só de leitura (nenhuma ação de escrita)', A.FERRAMENTAS.every(t => !/salvar|excluir|apagar|conectar/.test(t.executar.toString())));
-  ok('prompt proíbe recomendação e pedir senha', /recomendação de investimento/.test(A.SYSTEM_PROMPT) && /senhas/.test(A.SYSTEM_PROMPT));
-  A.registrarProvedor('eco', { async gerar({ mensagens }) { return { texto: 'eco:' + mensagens.slice(-1)[0].texto }; } }); A.usarProvedor('eco');
-  ok('provedor novo pluga sem mexer na tela', (await p('oi')).texto === 'eco:oi'); A.usarProvedor('servidor');
-  let e2; try { await p('oi'); } catch (er) { e2 = er; } ok('provedor "servidor" avisa que ainda não está conectado', e2 && /ainda não foi conectada/.test(e2.message));
-  console.log(f ? f + ' FALHA(S)' : 'tudo ok'); process.exit(f ? 1 : 0);
-})();
+console.log(f ? f + ' FALHA(S)' : 'tudo ok'); process.exit(f ? 1 : 0);

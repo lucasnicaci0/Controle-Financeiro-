@@ -95,7 +95,7 @@ O canvas respeita o `devicePixelRatio` (limite 1,5x / 2x / 3x conforme a GPU), o
 
 ## Fase 5 — Conexão bancária, Assistente e preparação de canais
 - **Conexões (Open Finance, Pluggy):** consentimento explícito, importação de contas/saldos/transações com categorização por regras e detecção de duplicados, revogação a qualquer momento. Credenciais em Propriedades do script (`PLUGGY_CLIENT_ID`, `PLUGGY_CLIENT_SECRET`). Detalhes em `docs/open-finance.md`. **Atenção:** o widget da Pluggy é um script externo carregado só após o consentimento (`PLUGGY_CONNECT_URL` em `config.js`).
-- **Assistente de IA:** tela de chat + `js/servicos/assistente.js` (prompt, ferramentas, provedores). Modo simulado ativo; IA real documentada em `docs/assistente-ia.md`.
+- **Rumi (agente virtual):** chat com voz, memória por usuário, ações com confirmação/auditoria/desfazer, Modo Contador e WhatsApp. Veja `docs/agente-rumi.md`. Para mudar o núcleo: edite `apps-script/agente_core.js` / `agente_servidor.js` e rode `node apps-script/montar.js`.
 - **Preparados (sem funcionar ainda):** leitura de notificações (precisa de app Android nativo; `docs/notificacoes-android.md`) e agente de WhatsApp (API oficial; `docs/whatsapp.md`).
 - Testes: `node apps-script/teste_gs7.js`, `node apps-script/teste_servicos.js`, `node apps-script/teste_fase5_ui.js`.
 

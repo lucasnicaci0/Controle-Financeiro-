@@ -1,4 +1,4 @@
-// Fase 5 (interface, modo demo): Conexões (consentimento, conectar, atualizar, desconectar) e Assistente. Uso: node teste_fase5_ui.js
+// Fase 5 (interface, modo demo): Conexões (consentimento, conectar, atualizar, desconectar). Uso: node teste_fase5_ui.js
 const { chromium } = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..');
 (async () => {
@@ -18,7 +18,7 @@ const root = path.join(__dirname, '..');
     ok('mostra o consentimento (dados lidos, finalidade, sem senha, revogação)', /Seu consentimento/i.test(tx) && /senha/.test(tx) && /revogar/.test(tx));
     ok('botão Conectar começa desabilitado', await pg.locator('button:has-text("Conectar meu banco")').isDisabled());
     ok('nenhum script do provedor é carregado antes do consentimento', externas.length === 0);
-    ok('mostra "Em preparação": notificações e WhatsApp', /notificações/i.test(tx) && /WhatsApp/.test(tx) && /Android nativo/.test(tx));
+    ok('mostra "Em preparação" (notificações) e o atalho do WhatsApp do Rumi', /notificações/i.test(tx) && /WhatsApp/.test(tx) && /Android nativo/.test(tx));
     await pg.locator('#of-aceite').check(); await pg.waitForTimeout(100);
     ok('aceitar habilita o botão', await pg.locator('button:has-text("Conectar meu banco")').isEnabled());
     const contasAntes = await pg.evaluate(() => demoDB.contas.length);
@@ -32,20 +32,6 @@ const root = path.join(__dirname, '..');
     await pg.locator('button:has-text("Desconectar")').first().click(); await pg.waitForTimeout(1200);   // diálogos aceitam: apaga também os importados
     ok('desconectar remove a conexão', /Nenhum banco conectado/.test(await pg.locator('#view').innerText()));
     ok('e os lançamentos importados (opção aceita)', (await pg.evaluate(() => demoDB.lanc.filter(l => (l.chave || '').startsWith('of:')).length)) === 0);
-    // Assistente
-    await nav('assistente');
-    ok('assistente mostra aviso de modo simulado e saudação', /Modo simulado/.test(await pg.locator('#view').innerText()) && /Olá! Sou o assistente/.test(await pg.locator('.chat').innerText()));
-    const pergunta = async t => { await pg.fill('input[aria-label="Mensagem para o assistente"]', t); await pg.keyboard.press('Enter'); await pg.waitForTimeout(700); return pg.locator('.msg.assistente .txt').last().innerText(); };
-    ok('"quanto gastei este mês?" responde com R$', /gastou R\$/.test(await pergunta('quanto gastei este mês?')));
-    ok('"qual meu saldo?" lista contas', /Saldo total: R\$/.test(await pergunta('qual meu saldo?')));
-    ok('"cotação do dólar" usa a cotação e traz o aviso', /USD está em R\$/.test(await pergunta('cotação do dólar')) );
-    ok('"como estão meus limites" responde', /limite|Limites/.test(await pergunta('como estão meus limites?')));
-    const inv = await pergunta('devo comprar ações?'); ok('não recomenda investimento', /Não faço recomendação de investimento/.test(inv), inv);
-    ok('pergunta desconhecida orienta o que dá para perguntar', /não entendi/.test(await pergunta('qual a capital da França')));
-    await pg.locator('button.chip:has-text("Últimos lançamentos")').click(); await pg.waitForTimeout(700);
-    ok('sugestões clicáveis funcionam', /Últimos lançamentos|lançamentos/.test(await pg.locator('.msg.assistente .txt').last().innerText()));
-    await pg.locator('button:has-text("Limpar conversa")').click(); ok('limpar conversa', (await pg.locator('.msg').count()) === 1);
-    const lg = await pg.locator('.chat').getAttribute('role'); ok('log acessível (role=log)', lg === 'log');
     ok('sem scroll horizontal', await pg.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     ok('sem erros de JS', erros.length === 0, erros);
     await ctx.close();

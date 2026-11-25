@@ -61,6 +61,9 @@ function novoContexto() {
           if (!ctx.awesome) return { getResponseCode: () => 500, getContentText: () => '' };
           const r = ctx.awesome(url, op || {}); return { getResponseCode: () => r.codigo, getContentText: () => JSON.stringify(r.corpo) };
         }
+        if (/graph\.facebook\.com/.test(url)) {   // WhatsApp Cloud API: o teste define ctx.whatsapp(url, op)
+          const r = ctx.whatsapp ? ctx.whatsapp(url, op || {}) : { codigo: 200, corpo: {} }; return { getResponseCode: () => r.codigo, getContentText: () => JSON.stringify(r.corpo) };
+        }
         if (/pluggy\.ai/.test(url)) {   // Open Finance: o teste define ctx.pluggy(url, op) -> {codigo, corpo}
           if (!ctx.pluggy) return { getResponseCode: () => 500, getContentText: () => '' };
           const r = ctx.pluggy(url, op || {}); return { getResponseCode: () => r.codigo, getContentText: () => (r.corpo === undefined ? '' : JSON.stringify(r.corpo)) };
