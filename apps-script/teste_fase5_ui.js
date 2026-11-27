@@ -11,7 +11,7 @@ const root = path.join(__dirname, '..');
     const ctx = await b.newContext({ viewport: vp }); const pg = await ctx.newPage(); const erros = [], externas = [];
     pg.on('pageerror', e => erros.push(e.message)); pg.on('dialog', d => d.accept());
     pg.on('request', r => { if (/pluggy/.test(r.url())) externas.push(r.url()); });
-    await pg.goto('http://localhost:8094/index.html?q=1&demo'); await pg.waitForTimeout(2500);
+    await pg.goto('http://localhost:8094/index.html?q=1&demo&semintro'); await pg.waitForTimeout(2500);
     const nav = v => pg.evaluate(v => document.querySelector('#nav button[data-v=' + v + ']').click(), v).then(() => pg.waitForTimeout(900));
     await nav('conexoes');
     const tx = await pg.locator('#view').innerText();

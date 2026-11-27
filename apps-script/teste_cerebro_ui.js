@@ -9,7 +9,7 @@ const root = path.join(__dirname, '..');
   const abre = async (vp, reduz) => {
     const ctx = await b.newContext({ viewport: vp, reducedMotion: reduz ? 'reduce' : 'no-preference' }); const pg = await ctx.newPage(); pg.erros = [];
     pg.on('pageerror', e => pg.erros.push(e.message)); pg.on('dialog', d => d.accept());
-    await pg.goto('http://localhost:8096/index.html?q=1&demo'); await pg.waitForTimeout(4500); return { ctx, pg };
+    await pg.goto('http://localhost:8096/index.html?q=1&demo&semintro'); await pg.waitForTimeout(4500); return { ctx, pg };
   };
   const spacer = pg => pg.evaluate(() => { const s = document.querySelector('.jspacer'); const r = s.getBoundingClientRect(); return { top: r.top + scrollY, h: s.offsetHeight, vh: innerHeight }; });
   const irPara = async (pg, f) => { const s = await spacer(pg); await pg.evaluate(y => scrollTo(0, y), s.top + (f <= 1 ? (s.h - s.vh) * f : s.h - s.vh + s.vh * (f - 1))); await pg.waitForTimeout(1800); };

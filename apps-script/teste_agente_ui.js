@@ -1,4 +1,4 @@
-// Rumi (interface, modo demo): chat, mascote e estados, voz (simulada), confirmações, Modo Contador, memória, permissões, auditoria e WhatsApp. Uso: node teste_agente_ui.js
+// Rumi flutuante (modo demo): personagem, painel, permissões, tutorial, navegação por conversa e valores. Uso: node teste_agente_ui.js
 const { chromium } = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..');
 (async () => {
@@ -10,108 +10,102 @@ const root = path.join(__dirname, '..');
     console.log(nome);
     const ctx = await b.newContext({ viewport: vp, reducedMotion: 'reduce' }); const pg = await ctx.newPage(); const erros = [];
     pg.on('pageerror', e => erros.push(e.message)); pg.on('dialog', d => d.accept());
-    await pg.addInitScript(() => {
-      window.__falas = [];
-      window.SpeechSynthesisUtterance = function (t) { this.text = t; };
-      Object.defineProperty(window, 'speechSynthesis', { value: { speak: u => window.__falas.push(u.text), cancel() {}, getVoices: () => [] }, configurable: true });
-      window.SpeechRecognition = window.webkitSpeechRecognition = function () { this.start = () => { setTimeout(() => { this.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'hoje gastei 80 reais abastecendo o carro' }], { isFinal: true })] }); this.onend(); }, 150); }; this.stop = () => {}; };
-    });
-    await pg.goto('http://localhost:8097/index.html?q=1&demo'); await pg.waitForTimeout(2500);
+    const url = extra => 'http://localhost:8097/index.html?q=1&demo' + (extra || '');
     const nav = v => pg.evaluate(v => document.querySelector('#nav button[data-v=' + v + ']').click(), v).then(() => pg.waitForTimeout(700));
-    const txt = () => pg.locator('#view').innerText();
-    const diz = async t => { await pg.fill('input[aria-label="Mensagem para o Rumi"]', t); await pg.keyboard.press('Enter'); await pg.waitForTimeout(450); return pg.locator('.rm-linha.agente .rm-msg').last().innerText(); };
-    const estado = () => pg.locator('.rm-head svg.rumi').getAttribute('data-e');
-    ok('menu tem "Rumi" e não tem mais "Assistente"', (await pg.locator('#nav button[data-v=agente]').innerText()) === 'Rumi' && (await pg.locator('#nav button[data-v=assistente]').count()) === 0);
-    await nav('agente');
-    ok('área exclusiva: mascote, título, campo de texto, botão de áudio, enviar', (await pg.locator('.rm-head svg.rumi').count()) === 1 && /rumi/i.test(await pg.locator('.rm-head h3').innerText()) && await pg.locator('input[aria-label="Mensagem para o Rumi"]').isVisible() && await pg.locator('.rm-mic').isVisible() && await pg.locator('button:has-text("Enviar")').isVisible());
-    ok('saudação do Rumi e atalho do Modo Contador', /Eu sou o Rumi/.test(await pg.locator('.rm-log').innerText()) && await pg.locator('[data-contador]').isVisible());
-    ok('estado inicial do mascote: espera', (await estado()) === 'espera');
-    // estados do mascote
-    const visiveis = await pg.evaluate(() => { const r = {}; const svg = document.querySelector('.rm-head svg.rumi'); for (const e of ['espera', 'processando', 'analisando', 'executando', 'confirmando', 'problema', 'apresentando']) { RumiMascote.definir(svg, e); r[e] = [...svg.querySelectorAll('.rm-x')].filter(x => getComputedStyle(x).display !== 'none').map(x => x.getAttribute('class').replace('rm-x rm-x-', '')).join(',') + '|' + [...svg.querySelectorAll('.rm-b')].filter(x => getComputedStyle(x).display !== 'none').length; } RumiMascote.definir(svg, 'espera'); return r; });
-    ok('7 estados visualmente distintos (adereço e boca)', visiveis.espera === '|1' && visiveis.processando === 'proc|1' && visiveis.analisando === 'ana|1' && visiveis.executando === 'exe|1' && visiveis.confirmando === 'ok|1' && visiveis.problema === 'prob|1' && visiveis.apresentando === 'apr|1', visiveis);
-    ok('mascote pequeno: ocupa só o cabeçalho (≤ 72px)', (await pg.locator('.rm-head svg.rumi').boundingBox()).width <= 72);
-    // indicador de processamento
-    await pg.evaluate(() => { const h = window.__h = RumiDemo.handler; RumiDemo.handler = (a, d, D) => { const r = h(a, d, D); return a === 'agente_mensagem' ? new Promise(res => setTimeout(() => r.then(res), 1500)) : r; }; });
+    const abre = async () => { await pg.locator('#rumi-fab').click(); await pg.waitForTimeout(300); };
+    const diz = async t => { await pg.fill('input[aria-label="Mensagem para o Rumi"]', t); await pg.keyboard.press('Enter'); await pg.waitForTimeout(500); return pg.locator('.rm-linha.agente .rm-msg').last().innerText(); };
+
+    // ---- 1) primeiro acesso: permissões e tutorial ----
+    await pg.goto(url()); await pg.waitForSelector('.rm-modal [data-perm]', { timeout: 25000 }).catch(() => {});
+    ok('1º acesso: etapa de permissões aparece uma vez', await pg.locator('.rm-modal [data-perm]').count() === 4);
+    ok('nenhuma permissão vem marcada', await pg.locator('.rm-modal input[type=checkbox]:checked').count() === 0);
+    ok('cada permissão explica o motivo e o que acontece se negar', (await pg.locator('.rm-modal').innerText()).split('Se você não permitir').length === 5);
+    ok('sem resposta ainda: o Rumi não age (privacidade não concedida)', await pg.evaluate(async () => (await demoDB.agente.perm.privacidade) === undefined));
+    await pg.locator('.rm-modal [data-perm=privacidade] .sw').click(); await pg.locator('.rm-modal [data-perm=memoria] .sw').click();
+    await pg.locator('[data-perm-salvar]').click(); await pg.waitForTimeout(900);
+    ok('escolhas salvas na conta (privacidade e memória sim; whatsapp e voz não)', await pg.evaluate(() => { const p = demoDB.agente.perm; return p.privacidade.estado === 'concedida' && p.memoria.estado === 'concedida' && p.whatsapp.estado === 'negada' && p.voz.estado === 'negada'; }));
+    ok('após responder, o tutorial inicia sozinho no passo 1 de 10', /Passo 1 de 9|Passo 1 de 10/.test(await pg.locator('.rm-tut-card').innerText()), await pg.locator('.rm-tut-card').innerText().catch(() => ''));
+    const total = Number((await pg.locator('[data-tut-pos]').innerText()).match(/de (\d+)/)[1]);
+    ok('destaque visual sobre elemento real', await pg.locator('.rm-tut-luz').evaluate(e => getComputedStyle(e).display === 'block'));
+    ok('progresso, voltar desabilitado no 1º passo, pular e pausar existem', await pg.locator('[role=progressbar]').count() === 1 && await pg.locator('[data-tut=voltar]').isDisabled() && await pg.locator('[data-tut=pular]').count() === 1 && await pg.locator('[data-tut=pausar]').count() === 1);
+    await pg.locator('[data-tut=proximo]').click(); await pg.waitForTimeout(900); await pg.locator('[data-tut=proximo]').click(); await pg.waitForTimeout(1200);
+    ok('avançou 2 passos e navegou até o Painel', /Passo 3 de/.test(await pg.locator('[data-tut-pos]').innerText()) && await pg.evaluate(() => S.view) === 'painel');
+    ok('progresso salvo na conta (passo 3)', await pg.evaluate(() => demoDB.agente.onb.estado === 'em_andamento' && demoDB.agente.onb.passo === 3));
+    await pg.locator('[data-tut=voltar]').click(); await pg.waitForTimeout(900);
+    ok('voltar funciona', /Passo 2 de/.test(await pg.locator('[data-tut-pos]').innerText()));
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);
+    ok('pausar: tutorial some, estado em andamento preservado', await pg.locator('.rm-tut').count() === 0 && await pg.evaluate(() => demoDB.agente.onb.estado === 'em_andamento' && demoDB.agente.onb.passo === 2));
+    await pg.evaluate(() => RumiTutorial.encerrar());
+
+    // ---- 2) personagem flutuante ----
+    await pg.goto(url('&semintro')); await pg.waitForSelector('#rumi-fab', { timeout: 25000 }).catch(() => {});
+    await pg.evaluate(() => api('permissoes_salvar', { itens: { privacidade: 'concedida', memoria: 'concedida', whatsapp: 'negada', voz: 'negada' } }));
+    ok('não existe mais aba/menu "Rumi"', await pg.locator('#nav button[data-v=agente]').count() === 0 && !/^Rumi$/m.test(await pg.locator('#nav').innerText()));
+    ok('personagem flutuante visível, acessível e dentro da tela', await pg.locator('#rumi-fab').isVisible() && !!(await pg.locator('#rumi-fab').getAttribute('aria-label')) && await pg.locator('#rumi-fab').evaluate(e => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight; }));
+    // não cobre a barra de navegação nem botões fixos
+    const sobrepoe = await pg.evaluate(() => { const f = document.getElementById('rumi-fab').getBoundingClientRect(), n = document.getElementById('nav').getBoundingClientRect(); return !(f.right < n.left || f.left > n.right || f.bottom < n.top || f.top > n.bottom); });
+    ok('posição padrão não cobre a barra de navegação', !sobrepoe);
+    await nav('lanc'); const antesTxt = await pg.locator('#view').innerText();
+    await abre();
+    ok('painel abre como diálogo sem trocar de tela', await pg.locator('.rm-pnl[role=dialog]').isVisible() && await pg.evaluate(() => S.view) === 'lanc');
+    ok('saudação e campo de mensagem no painel', /Eu sou o Rumi/.test(await pg.locator('.rm-log').innerText()) && await pg.locator('input[aria-label="Mensagem para o Rumi"]').isVisible());
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(300);
+    ok('Esc fecha e volta para a mesma tela, com o mesmo conteúdo', !(await pg.locator('.rm-pnl').isVisible().catch(() => false)) && await pg.evaluate(() => S.view) === 'lanc' && (await pg.locator('#view').innerText()) === antesTxt);
+    ok('foco volta ao personagem', await pg.evaluate(() => document.activeElement.id) === 'rumi-fab');
+    await abre(); await pg.locator('[data-rumi-fechar]').click(); await pg.waitForTimeout(300);
+    ok('botão fechar funciona', !(await pg.locator('.rm-pnl').isVisible().catch(() => false)));
+    // arrastar
+    const bx = await pg.locator('#rumi-fab').boundingBox();
+    await pg.mouse.move(bx.x + 20, bx.y + 20); await pg.mouse.down(); await pg.mouse.move(bx.x - 120, bx.y - 100, { steps: 6 }); await pg.mouse.up(); await pg.waitForTimeout(200);
+    const bx2 = await pg.locator('#rumi-fab').boundingBox();
+    ok('arrastar muda de lugar sem abrir o painel', Math.abs(bx2.x - bx.x) > 60 && !(await pg.locator('.rm-pnl').isVisible().catch(() => false)));
+    ok('posição fica salva', await pg.evaluate(() => !!localStorage.getItem('rumo_rumi_pos')));
+    await pg.evaluate(() => localStorage.removeItem('rumo_rumi_pos'));
+
+    // ---- 3) conversa: valores, navegação, copiloto ----
+    await abre();
     const antes = await pg.evaluate(() => demoDB.lanc.length);
-    await pg.fill('input[aria-label="Mensagem para o Rumi"]', 'Gastei R$ 45 no almoço.'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(300);
-    const proc = [await estado(), await pg.locator('.rm-status').innerText(), await pg.locator('button:has-text("Enviar")').isDisabled()];
-    ok('enquanto processa: mascote "processando", status e botão bloqueado', proc[0] === 'processando' && /Pensando/.test(proc[1]) && proc[2], proc);
-    await pg.waitForTimeout(1700);
-    ok('registrou o gasto e confirmou com os dados', (await pg.evaluate(() => demoDB.lanc.length)) === antes + 1 && /registrada/.test(await pg.locator('.rm-linha.agente .rm-msg').last().innerText()) && /45,00/.test(await pg.locator('.rm-linha.agente .rm-msg').last().innerText()));
-    await pg.evaluate(() => { RumiDemo.handler = window.__h; });
-    ok('mascote "confirmando" e cartão de ação executada com Desfazer', (await estado()) === 'confirmando' && await pg.locator('.rm-feito [data-desfazer]').last().isVisible());
-    const novo = await pg.evaluate(() => demoDB.lanc[demoDB.lanc.length - 1]);
-    ok('lançamento com valor, tipo, data, conta, categoria e descrição', novo.valor === 45 && novo.tipo === 'despesa' && !!novo.contaId && !!novo.categoriaId && /Almo/i.test(novo.descricao) && /^\d{4}-\d{2}-\d{2}$/.test(novo.data), novo);
-    await pg.locator('.rm-feito [data-desfazer]').last().click(); await pg.waitForTimeout(400);
-    ok('Desfazer remove o lançamento', (await pg.evaluate(() => demoDB.lanc.length)) === antes);
-    // mesma mensagem não duplica
-    // perguntar o que falta
-    let r = await diz('gastei 33'); ok('sem categoria: pergunta e oferece opções', /categoria/i.test(r) && (await pg.locator('.sugestoes .chip').count()) >= 3, r);
-    await pg.locator('.sugestoes .chip:has-text("Lazer")').first().click(); await pg.waitForTimeout(450);
-    ok('clicar numa opção conclui o registro', (await pg.evaluate(() => demoDB.lanc.length)) === antes + 1, await pg.locator('.rm-linha.agente .rm-msg').last().innerText());
-    // consulta
-    r = await diz('Quanto gastei com alimentação este mês?'); ok('consulta por categoria', /Você gastou R\$/.test(r) && /alimentação/i.test(r), r);
-    ok('consulta não grava nada', (await pg.evaluate(() => demoDB.lanc.length)) === antes + 1);
-    // alterar com confirmação
-    const idComb = await pg.evaluate(() => demoDB.lanc.find(l => /Combust/.test(l.descricao) && l.data.slice(0, 7) === new Date().toISOString().slice(0, 7)) || demoDB.lanc.find(l => /Combust/.test(l.descricao)));
-    r = await diz('altere o valor do combustível para R$ 200'); ok('alteração pede confirmação antes de mudar', /Confirma/.test(r) && (await pg.evaluate(id => demoDB.lanc.find(l => l.id === id).valor, idComb.id)) === 190, r);
-    ok('mascote "identificando" vira análise enquanto aguarda', ['analisando', 'espera'].includes(await estado()));
-    await pg.locator('.sugestoes .chip:has-text("Sim")').click(); await pg.waitForTimeout(450);
-    ok('após "Sim" altera o valor', (await pg.evaluate(id => demoDB.lanc.find(l => l.id === id).valor, idComb.id)) === 200);
-    r = await diz('apague o lançamento do combustível'); ok('exclusão pede confirmação', /Vou excluir/.test(r) && (await pg.evaluate(id => !!demoDB.lanc.find(l => l.id === id), idComb.id)));
-    await pg.locator('.sugestoes .chip:has-text("Não")').click(); await pg.waitForTimeout(450);
-    ok('"Não" cancela sem apagar', await pg.evaluate(id => !!demoDB.lanc.find(l => l.id === id), idComb.id));
-    // Modo Contador
-    await pg.locator('[data-contador]').click(); await pg.waitForTimeout(500);
-    r = await pg.locator('.rm-linha.agente .rm-msg').last().innerText();
-    ok('Modo Contador: panorama com receitas, despesas, saldo e o que fazer', /Receitas: R\$/.test(r) && /Despesas: R\$/.test(r) && /Saldo do mês/.test(r) && /O que eu faria/.test(r), r);
-    ok('Modo Contador avisa que são estimativas', /Análise educativa/.test(r));
-    ok('mascote apresentando a análise', (await estado()) === 'apresentando');
-    r = await diz('Consigo comprar algo de R$ 500 sem comprometer minhas contas?'); ok('pergunta natural de compra', /500,00/.test(r) && /estimativa/i.test(r), r);
-    r = await diz('Onde estou gastando mais dinheiro?'); ok('maiores categorias', /maiores gastos/i.test(r) && /•/.test(r), r);
-    // entendimento informal e aprendizado
-    r = await diz('uber 23'); ok('comando informal e incompleto', /23,00/.test(r) && /Transporte/.test(r), r);
-    r = await diz('gastei 20 no mercadinho do zé'); await pg.waitForTimeout(200);
-    if (/categoria/i.test(r)) { await pg.locator('.sugestoes .chip:has-text("Alimentação")').first().click(); await pg.waitForTimeout(450); }
-    ok('aprendeu o termo novo', await pg.evaluate(() => demoDB.agente.memoria.some(m => /mercadinho/.test(m.chave))));
-    const n0 = await pg.evaluate(() => demoDB.lanc.length); r = await diz('gastei 15 no mercadinho do zé'); ok('na próxima usa a memória sem perguntar', (await pg.evaluate(() => demoDB.lanc.length)) === n0 + 1, r);
-    r = await diz('não, é lazer'); ok('correção do último lançamento', /Corrigido/.test(r) && /lembrar/.test(r), r);
-    // voz
-    const nv = await pg.evaluate(() => demoDB.lanc.length);
-    await pg.locator('.rm-mic').click(); await pg.waitForTimeout(700);
-    ok('voz: fala transcrita vira lançamento (80, Transporte) e a bolha mostra o microfone', (await pg.evaluate(() => demoDB.lanc.length)) === nv + 1 && (await pg.evaluate(() => { const l = demoDB.lanc[demoDB.lanc.length - 1]; return l.valor === 80 && /Transporte/.test(demoDB.cats.find(c => c.id === l.categoriaId).nome); })) && (await pg.locator('.rm-msg.voz').count()) >= 1);
-    // ajustes
-    await pg.locator('summary:has-text("Permissões e privacidade")').click();
-    await pg.locator('#rm-p-voz_resposta').evaluate(e => e.click()); await pg.waitForTimeout(300);
-    await diz('qual meu saldo?'); ok('resposta em áudio (síntese de voz) quando ligada', (await pg.evaluate(() => window.__falas.length)) >= 1 && /Saldo/.test(await pg.evaluate(() => window.__falas[0])));
-    await pg.locator('#rm-p-excluir').evaluate(e => e.click()); await pg.waitForTimeout(300);
-    r = await diz('apague o lançamento do uber'); ok('sem permissão de excluir: recusa e explica', /desativou/.test(r), r);
-    await pg.locator('#rm-p-excluir').evaluate(e => e.click()); await pg.waitForTimeout(300);
-    await pg.locator('summary:has-text("O que o Rumi aprendeu")').click();
-    ok('memória lista o aprendido e permite apagar', /mercadinho/.test(await pg.locator('[data-sec=mem]').innerText()));
-    const nm = await pg.evaluate(() => demoDB.agente.memoria.length);
-    await pg.locator('[data-sec=mem] .x').first().click(); await pg.waitForTimeout(500);
-    ok('item de memória apagado', (await pg.evaluate(() => demoDB.agente.memoria.length)) === nm - 1);
-    await pg.locator('summary:has-text("Registro de ações")').click();
-    ok('auditoria lista as ações com opção de desfazer', (await pg.locator('.rm-aud').count()) >= 3 && (await pg.locator('.rm-aud .chip:has-text("Desfazer")').count()) >= 1);
-    await pg.locator('summary:has-text("WhatsApp")').click(); await pg.locator('[data-zap-codigo]').click(); await pg.waitForTimeout(400);
-    ok('WhatsApp: gera código de conexão', /DEMO42/.test(await pg.locator('.rm-codigo').innerText()));
-    ok('apagar histórico limpa a conversa', await (async () => { await pg.locator('[data-limpar-hist]').click(); await pg.waitForTimeout(400); return /Eu sou o Rumi/.test(await pg.locator('.rm-log').innerText()) && (await pg.locator('.rm-linha.usuario').count()) === 0; })());
-    // integração com outros módulos
-    await nav('lanc'); ok('lançamentos criados pelo Rumi aparecem na aba Lançamentos', /Uber|Almo|Mercadinho|Mercado/i.test(await txt()));
-    await nav('agente'); ok('a conversa continua ao voltar para o Rumi', (await pg.locator('.rm-log').count()) === 1);
-    // layout
-    ok('sem scroll horizontal', await pg.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
-    const bx = await pg.locator('.rm-form').boundingBox(); ok('campo, microfone e Enviar visíveis e dentro da tela', bx.x >= 0 && bx.x + bx.width <= vp.width + 1);
+    const casos = [['gastei R$ 3.000,00 no mercado', 3000], ['gastei 3k no mercado', 3000], ['gastei 3 mil reais no mercado', 3000], ['gastei 2,5k no mercado', 2500], ['gastei 2.500,50 no mercado', 2500.5], ['gastei 1500 reais no mercado', 1500], ['gastei R$ 3000 no mercado', 3000], ['gastei 3000 no mercado', 3000], ['gastei 1,5 milhão no mercado', 1500000]];
+    for (const [t, v] of casos) { await diz(t); await pg.waitForTimeout(150); const l = await pg.evaluate(() => demoDB.lanc[demoDB.lanc.length - 1]); ok('valor "' + t + '" → ' + v + ' (gravado ' + l.valor + ')', l.valor === v, l.valor); }
+    ok('nenhum lançamento com R$ 1,00 indevido', await pg.evaluate(() => demoDB.lanc.filter(l => l.valor === 1 && /mercado/i.test(l.descricao)).length) === 0);
+    const r3 = await diz('gastei 3,000 no mercado'); ok('"3,000" é ambíguo: pergunta antes de gravar', /Está certo/.test(r3) && (await pg.evaluate(() => demoDB.lanc.length)) === antes + casos.length);
+    await diz('não');
+    const rn = await diz('abrir metas'); await pg.waitForTimeout(900);
+    ok('"abrir metas" navega e fecha o painel', /Abrindo Metas/.test(rn) && await pg.evaluate(() => S.view) === 'metas' && !(await pg.locator('.rm-pnl').isVisible().catch(() => false)));
+    await abre(); const rg = await diz('como cadastro uma meta?');
+    ok('guia explica passo a passo e oferece abrir', /Metas/.test(rg) && /1\./.test(rg) && await pg.locator('[data-abrir=metas]').count() >= 1);
+    const rt = await diz('explique esta tela'); ok('explica a tela atual', /Você está em Metas/.test(rt), rt);
+    const ri = await diz('o que é taxa de poupança'); ok('explica indicador', /Taxa de poupança/.test(ri));
+    const nM = await pg.evaluate(() => demoDB.metas.length); const rm = await diz('criar meta Viagem de 5 mil');
+    ok('cria meta com valor correto', /Meta criada: Viagem/.test(rm) && await pg.evaluate(() => demoDB.metas.length) === nM + 1 && await pg.evaluate(() => demoDB.metas[demoDB.metas.length - 1].valorAlvo) === 5000);
+    await diz('desfazer'); ok('desfazer remove a meta criada', await pg.evaluate(() => demoDB.metas.length) === nM);
+    const rc = await diz('criar categoria Pets'); ok('cria categoria', /Categoria criada: Pets/.test(rc) && await pg.evaluate(() => demoDB.cats.some(c => c.nome === 'Pets')));
+    const rv = await diz('verificar meus dados'); ok('verifica inconsistências (R$ 1,00 / sem categoria / etc.) com ressalva', /ponto|não encontrei/i.test(rv), rv);
+    const rq = await diz('quanto gastei com mercado este mês'); const rq2 = await diz('e no mês passado?'); ok('contexto de conversa: follow-up reutiliza a categoria', /mercado/i.test(rq2) && /mês passado/.test(rq2), rq2);
+    await diz('iniciar tutorial'); await pg.waitForTimeout(1500);
+    ok('"iniciar tutorial" fecha o painel e abre o tutorial', await pg.locator('.rm-tut-card').isVisible() && !(await pg.locator('.rm-pnl').isVisible().catch(() => false)));
+    await pg.locator('[data-tut=pular]').click(); await pg.waitForTimeout(500);
+    ok('pular dispensa e salva', await pg.locator('.rm-tut').count() === 0 && await pg.evaluate(() => demoDB.agente.onb.estado) === 'pulado');
+
+    // ---- 4) tutorial completo ----
+    await pg.evaluate(() => RumiTutorial.iniciar({ api, el, toast, brl, S, atualizar: carregarBase, ir }, {})); await pg.waitForTimeout(900);
+    let passos = 0; const titulos = [];
+    for (let i = 0; i < 12; i++) { titulos.push(await pg.locator('.rm-tut-card h3').innerText()); passos++; const t = await pg.locator('[data-tut=proximo]').innerText(); await pg.locator('[data-tut=proximo]').click(); await pg.waitForTimeout(1000); if (t === 'Concluir') break; }
+    ok('tutorial percorre os 10 passos e conclui (' + passos + ')', passos === 10, titulos);
+    ok('concluído e salvo', await pg.evaluate(() => demoDB.agente.onb.estado === 'concluido') && await pg.locator('.rm-tut').count() === 0);
+    ok('concluído: não reinicia automaticamente', await pg.evaluate(async () => (await api('onboarding_estado')).automatico) === false);
+    await nav('opcoes');
+    ok('Opções mostra permissões, Rumi e tutorial', await pg.locator('#opt-perm').count() === 1 && await pg.locator('#opt-rumi').count() === 1 && await pg.locator('#opt-tutorial').count() === 1);
+    ok('permissões visíveis com estado e data', /Concedida/.test(await pg.locator('#opt-perm').innerText()));
+    await pg.locator('#op-perm-voz').check({ force: true }); await pg.waitForTimeout(500);
+    ok('alterar permissão nas Opções salva', await pg.evaluate(() => demoDB.agente.perm.voz.estado) === 'concedida');
+    await pg.locator('#op-perm-privacidade').uncheck({ force: true }); await pg.waitForTimeout(500);
+    await pg.locator('#rumi-fab').click(); await pg.waitForTimeout(300); const rp = await diz('qual meu saldo');
+    ok('sem privacidade o Rumi não lê dados, mas o app segue funcionando', /permissão de privacidade/.test(rp) && (await pg.evaluate(() => { document.querySelector('[data-rumi-fechar]').click(); return S.view; })) === 'opcoes');
+    await nav('painel'); ok('app continua funcionando com permissões negadas', /saldo/i.test(await pg.locator('#view').innerText()));
     await pg.screenshot({ path: '/tmp/rumi-' + nome + '.png' });
     ok('sem erros de JS', erros.length === 0, erros);
     await ctx.close();
   }
-  // navegador sem voz
-  const c2 = await b.newContext({ viewport: { width: 390, height: 780 }, reducedMotion: 'reduce' }); const p2 = await c2.newPage();
-  await p2.addInitScript(() => { window.SpeechRecognition = undefined; window.webkitSpeechRecognition = undefined; });
-  await p2.goto('http://localhost:8097/index.html?q=1&demo'); await p2.waitForTimeout(2500);
-  await p2.evaluate(() => document.querySelector('#nav button[data-v=agente]').click()); await p2.waitForTimeout(700);
-  ok('sem suporte a reconhecimento de voz: botão desabilitado com explicação', await p2.locator('.rm-mic').isDisabled() && /ditado/.test(await p2.locator('.rm-mic').getAttribute('title')));
   await b.close(); srv.close(); console.log(falhas ? falhas + ' FALHA(S)' : 'tudo ok'); process.exit(falhas ? 1 : 0);
 })();

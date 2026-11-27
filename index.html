@@ -19,6 +19,9 @@
 <script src="js/agente/voz.js" defer></script>
 <script src="js/agente/demo.js" defer></script>
 <script src="js/agente/tela.js" defer></script>
+<script src="js/agente/permissoes.js" defer></script>
+<script src="js/agente/flutuante.js" defer></script>
+<script src="js/agente/tutorial.js" defer></script>
 <style>
 :root{
   --bg:#05020A; --ink:#F5F3FF; --mute:#b2a3ee; --line:rgba(167,139,250,.2);
@@ -118,6 +121,7 @@ html[data-tema=claro] body.in-app{--bg:#F4F1FF;--ink:#1B1033;--mute:#51437F;--li
 html[data-tema=claro] body.in-app #fx,html[data-tema=claro] body.in-app canvas{opacity:0!important;pointer-events:none}
 html[data-tema=claro] body.in-app .glass{box-shadow:0 8px 30px rgba(60,30,140,.12)}
 html[data-tema=claro] body.in-app input,html[data-tema=claro] body.in-app select{background:#fff;color:var(--ink)}
+html[data-tema=claro] body.in-app .aviso-ex{color:var(--warn)}
 html[data-tema=claro] body.in-app select option{background:#fff;color:#1B1033}
 html[data-tema=claro] body.in-app .chip,html[data-tema=claro] body.in-app .btn.ghost,html[data-tema=claro] body.in-app .seg,html[data-tema=claro] body.in-app .dia,html[data-tema=claro] body.in-app .ico-grade button{background:rgba(81,67,127,.1)}
 html[data-tema=claro] body.in-app .seg button.on{color:#0B0618}
@@ -341,7 +345,6 @@ body.in-app #scrim{opacity:1}
         <button data-v="agenda">Agenda</button>
         <button data-v="limites">Limites</button>
         <button data-v="conexoes">Conexões</button>
-        <button data-v="agente">Rumi</button>
         <button data-v="cons">Consultor</button>
         <button data-v="opcoes">Opções</button>
       </nav>
@@ -381,6 +384,9 @@ function dataValida(y, m, d) {
 }
 // "1.234,56" · "12,5" · "-12.50" · "R$ 3.000" -> número (ou NaN)
 function parseValor(s) {
+  // mesmo interpretador do Rumi (js/servicos/agente-core.js): "R$ 3.000,00", "3000", "3k", "2,5k", "3 mil", "1,5 milhão"
+  const r = window.AgenteCore && AgenteCore.parseValor ? AgenteCore.parseValor(s) : null;
+  if (r) return r.ok ? r.valor : NaN;
   let t = String(s == null ? '' : s).replace(/R\$|\s/g, '');
   if (!t) return NaN;
   if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
@@ -998,6 +1004,12 @@ async function vOpcoes(raiz) {
       el('div', null, el('span', { class: 'small mute' }, 'Intensidade'), rUni),
       el('div', { style: 'margin-top:14px' }, restSec(['flutuantes', 'flutQtd', 'universo', 'uniInt'], 'Efeitos'))),
     el('div', { class: 'opts-foot' }, restaurar)));
+  const ctxR = rumiCtx(); let ajR = null;
+  ctxR.recarregarRumi = () => { if (ajR) ajR.recarregar(); };
+  const boxAj = el('div'); ajR = RumiTela.montarAjustes(boxAj, ctxR);
+  raiz.append(el('div', { class: 'opts', id: 'opt-rumi' }, RumiPermissoes.secao(ctxR),
+    el('section', { class: 'card glass' }, el('h3', null, 'Rumi, seu assistente'), el('p', { class: 'opt-sub' }, 'Memória, ações, registro e WhatsApp do Rumi. Para conversar, toque no personagem no canto da tela.'), boxAj),
+    RumiTutorial.cartao(ctxR)));
 }
 
 /* planos: valores vêm de config.js (editável); anual = total por ano */
@@ -1033,7 +1045,7 @@ async function vJornada(raiz) {
   CB.call('enterJourney', spacer, lista);
   Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes }).catch(() => null)]).then(([r, c]) => CB.call('setData', r, c)).catch(() => { /* cartões ficam sem números */ });
 }
-const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, conexoes: vConexoes, agente: vAgente, cambio: vCambio, perfil: vPerfil, ajuda: vAjuda, cartoes: vCartoes, invest: vInvest, agenda: vAgenda, limites: vLimites, cons: vCons };
+const TELAS = { opcoes: vOpcoes, jornada: vJornada, painel: vPainel, lanc: vLanc, orc: vOrc, metas: vMetas, contas: vContas, cats: vCats, conexoes: vConexoes, cambio: vCambio, perfil: vPerfil, ajuda: vAjuda, cartoes: vCartoes, invest: vInvest, agenda: vAgenda, limites: vLimites, cons: vCons };
 
 async function vPainel(raiz) {
   const [res, con] = await Promise.all([api('resumo', { mes: S.mes }), api('consultor', { mes: S.mes })]);
@@ -1842,12 +1854,18 @@ async function vConexoes(raiz) {
     el('div', { class: 'card glass reveal' }, el('h3', null, 'Em preparação'),
       el('div', { class: 'lista' },
         el('div', { class: 'item' }, el('div', { class: 't' }, el('b', null, '🔔 Leitura de notificações do banco'), el('span', { class: 'small mute' }, 'Exige um app Android nativo com permissão de "acesso a notificações". Não é possível só pelo site/PWA. Estrutura e documentação prontas (docs/notificacoes-android.md).')), el('span', { class: 'chip' }, 'Em breve')),
-        el('div', { class: 'item' }, el('div', { class: 't' }, el('b', null, '💬 Rumi no WhatsApp'), el('span', { class: 'small mute' }, 'Lance e consulte por mensagem pela API oficial do WhatsApp. A conexão fica nos ajustes do Rumi.')), el('button', { class: 'chip', type: 'button', onclick: () => ir('agente') }, 'Abrir o Rumi')))));
+        el('div', { class: 'item' }, el('div', { class: 't' }, el('b', null, '💬 Rumi no WhatsApp'), el('span', { class: 'small mute' }, 'Lance e consulte por mensagem pela API oficial do WhatsApp. A conexão fica em Opções › Rumi.')), el('button', { class: 'chip', type: 'button', onclick: () => RumiFlutuante.abrir() }, 'Abrir o Rumi')))));
 }
 
-/* ======================= Rumi: agente virtual (tela em js/agente/tela.js; núcleo de conversa em js/servicos/agente-core.js) ======================= */
-async function vAgente(raiz) {
-  RumiTela.montar(raiz, { api, el, toast, brl, S, atualizar: carregarBase });
+/* ======================= Rumi: personagem flutuante (js/agente/*) ======================= */
+// Contexto entregue ao Rumi, ao tutorial e às permissões: só serviços internos do app, nada de acesso direto à planilha.
+const rumiCtx = () => ({ api, el, toast, brl, S, atualizar: carregarBase, ir });
+async function rumiAposLogin() {
+  if (document.readyState !== 'complete') await new Promise(r => addEventListener('load', r, { once: true }));   // os scripts do Rumi são deferidos
+  if (!window.RumiFlutuante) return;
+  const ctx = rumiCtx(); RumiFlutuante.iniciar(ctx);
+  if (new URLSearchParams(location.search).has('semintro')) return;   // usado nos testes automáticos
+  try { await RumiPermissoes.verificar(ctx); if (window.RumiTutorial) await RumiTutorial.automatico(ctx); } catch (e) { /* a etapa inicial nunca bloqueia o app */ }
 }
 
 async function vCons(raiz) {
@@ -1926,6 +1944,7 @@ async function entrar(token, emDemo) {
     atualizaAvatar();
     S.mes = mesAtual(); rotuloMes();
     if (emDemo) toast('Modo demonstração: os dados são fictícios e somem ao recarregar.');
+    rumiAposLogin();   // não espera a Jornada 3D carregar
     await ir('jornada');
   } catch (e) {
     toast(e.message || 'Não foi possível entrar.', 'erro');
@@ -1935,6 +1954,7 @@ async function entrar(token, emDemo) {
 function mostrarLogin() { CB.call('leaveJourney'); CB.call('setMode', 'login'); scrollTo(0, 0); $('#shell').hidden = true; $('#login').hidden = false; $('#login .box').style.animation = 'none'; void $('#login .box').offsetWidth; $('#login .box').style.animation = ''; }
 function sair() {
   if (window.RumiTela) { RumiTela.reset(); if (window.RumiVoz) RumiVoz.calar(); }
+  if (window.RumiFlutuante) RumiFlutuante.ocultar(); if (window.RumiTutorial) RumiTutorial.encerrar();
   S.token = ''; S.user = null; S.contas = []; S.cats = []; S.demo = false; guarda('rumo_tk', null);
   try { if (window.google && google.accounts) google.accounts.id.disableAutoSelect(); } catch (e) { /* ok */ }
   $('#menu').hidden = true; mostrarLogin();

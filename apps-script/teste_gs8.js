@@ -5,6 +5,8 @@ const ctx = novoContexto(); ctx.autorizar();
 const A = token('ana@teste.com', 'Ana'), B = token('bia@teste.com', 'Bia');
 const R = (a, tk, d) => chamar(ctx, a, tk, d || {});
 R('iniciar', A); R('iniciar', B);
+const TUDO = { privacidade: 'concedida', memoria: 'concedida', whatsapp: 'concedida', voz: 'concedida' };
+R('permissoes_salvar', A, { itens: TUDO }); R('permissoes_salvar', B, { itens: TUDO });
 const M = (tk, texto, id) => R('agente_mensagem', tk, { texto, msgId: id || ('m' + Math.random()) });
 const lancs = tk => R('listar_lancamentos', tk, { mes: hoje.slice(0, 7) }).dados;
 const cats = tk => R('listar_categorias', tk).dados;
@@ -100,7 +102,7 @@ confere('Bia não herda o que a Ana ensinou (pergunta categoria)', r.dados.pende
 const idDaAna = lancs(A)[0].id;
 r = R('agente_desfazer', B, { grupo: 'qualquer' });
 confere('Bia não consegue desfazer nada da Ana', r.ok === false);
-confere('auditoria da Ana não aparece para Bia', R('agente_auditoria', B).dados.length === 0 && R('agente_auditoria', A).dados.length > 5);
+confere('auditoria da Ana não aparece para Bia', R('agente_auditoria', B).dados.filter(x => x.op !== 'config').length === 0 && R('agente_auditoria', A).dados.length > 5);
 
 console.log('Permissões');
 R('agente_config_salvar', B, { excluir: false, criar: true });

@@ -1,6 +1,6 @@
 /**
  * FINANÇAS DB — back-end em Google Apps Script + Google Planilhas
- * Versão 1.7.0
+ * Versão 1.8.0
  *
  * COMO USAR (resumo):
  *  1. Cole este arquivo em Extensões → Apps Script (script vinculado à planilha "Financas DB").
@@ -20,7 +20,7 @@
  * o que facilita trocar a planilha por outro banco no futuro.
  */
 
-var VERSAO = '1.7.0';
+var VERSAO = '1.8.0';
 
 var CONFIG = {
   CLIENT_ID: 'COLE_AQUI_O_ID_DO_CLIENTE_OAUTH',
@@ -63,7 +63,9 @@ var TABELAS = {
   AgenteHistorico: ['Id', 'Email', 'Data', 'Papel', 'Texto', 'Canal', 'MsgId'],
   AgenteAuditoria: ['Id', 'Email', 'Data', 'Canal', 'Op', 'Alvo', 'Antes', 'Depois', 'Resumo', 'Desfeito', 'Grupo', 'MsgId'],
   AgentePendentes: ['Email', 'Canal', 'Estado', 'Atualizado'],
-  ZapVinculos:     ['Email', 'Telefone', 'Codigo', 'Expira', 'Verificado', 'Criado']
+  ZapVinculos:     ['Email', 'Telefone', 'Codigo', 'Expira', 'Verificado', 'Criado'],
+  Permissoes:      ['Id', 'Email', 'Chave', 'Estado', 'Versao', 'Data'],
+  Onboarding:      ['Id', 'Email', 'Passo', 'Estado', 'Atualizado']
 };
 
 // Colunas formatadas como texto: impedem que a planilha converta datas ou interprete fórmulas.
@@ -231,8 +233,9 @@ function num_(v) {
   } else {
     var s = String(v == null ? '' : v).trim();
     if (s === '') throw erro_('valor_invalido', 'Valor inválido.');
-    if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
-    n = Number(s);
+    var pv = agParseValorTexto(s);   // mesmo interpretador do agente e dos formulários: "3.000,00", "3k", "1,5 milhão"
+    if (!pv.ok) throw erro_('valor_invalido', 'Valor inválido.');
+    n = pv.valor;
   }
   if (!isFinite(n) || Math.abs(n) >= 1e9) throw erro_('valor_invalido', 'Valor inválido.');
   return Math.round(n * 100) / 100;
@@ -1572,16 +1575,19 @@ function agDist1(a, b) {   // distância de edição ≤ 1 (erro de digitação)
 
 /* ---------- números por extenso e valores ---------- */
 var AG_UNID = { zero: 0, um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, onze: 11, doze: 12, treze: 13, catorze: 14, quatorze: 14, quinze: 15, dezesseis: 16, dezessete: 17, dezoito: 18, dezenove: 19, vinte: 20, trinta: 30, quarenta: 40, cinquenta: 50, sessenta: 60, setenta: 70, oitenta: 80, noventa: 90, cem: 100, cento: 100, duzentos: 200, trezentos: 300, quatrocentos: 400, quinhentos: 500, seiscentos: 600, setecentos: 700, oitocentos: 800, novecentos: 900 };
+var AG_MULT = { mil: 1000, k: 1000, milhao: 1000000, milhoes: 1000000 };
+var AG_VALOR_MAX = 1000000000;
 function agPorExtenso(tokens) {   // tokens normalizados -> [{valor, de, ate}] (sequências de palavras numéricas)
   var out = [], i = 0;
   while (i < tokens.length) {
     var t = tokens[i];
-    if (AG_UNID[t] !== undefined || (t === 'mil' && i + 0 >= 0 && false)) {
+    if (AG_UNID[t] !== undefined || ((t === 'mil' || t === 'milhao' || t === 'milhoes') && false)) {
       var j = i, total = 0, cur = 0, ult = i;
       while (j < tokens.length) {
         var w = tokens[j];
         if (AG_UNID[w] !== undefined) { cur += AG_UNID[w]; ult = j; }
         else if (w === 'mil') { total += (cur || 1) * 1000; cur = 0; ult = j; }
+        else if (w === 'milhao' || w === 'milhoes') { total += (cur || 1) * 1000000; cur = 0; ult = j; }
         else if (w === 'e' && j + 1 < tokens.length && (AG_UNID[tokens[j + 1]] !== undefined || tokens[j + 1] === 'mil')) { /* conector */ }
         else break;
         j++;
@@ -1592,38 +1598,72 @@ function agPorExtenso(tokens) {   // tokens normalizados -> [{valor, de, ate}] (
   return out;
 }
 var AG_MOEDA_PAL = /^(reais|real|conto|contos|pila|pilas|paus|pau|r\$)$/;
-// devolve { valor, de, ate } em índices de token, preferindo números marcados como dinheiro
+// Um token numérico (sem R$ nem sinal) no padrão brasileiro -> { v, amb, motivo, suf } ou null. Nunca devolve valor "padrão".
+function agNumTok(s) {
+  var m, r;
+  if ((m = s.match(/^(\d+(?:[.,]\d+)?)(k|mil|milhao|milhoes)$/))) { r = agNumTok(m[1]); return r && r.v > 0 ? { v: r.v * AG_MULT[m[2]], suf: true } : null; }   // 3k · 2,5k · 3mil
+  if (/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(s)) return { v: parseFloat(s.replace(/\./g, '').replace(',', '.')) };   // 2.500,50
+  if (/^\d{1,3}(\.\d{3})+$/.test(s)) return { v: parseInt(s.replace(/\./g, ''), 10) };                           // 3.000
+  if (/^\d+,\d{1,2}$/.test(s)) return { v: parseFloat(s.replace(',', '.')) };                                      // 12,5
+  if (/^\d+,\d{3}$/.test(s)) return { v: parseInt(s.replace(',', ''), 10), amb: true, motivo: 'a vírgula em "' + s + '" pode ser separador de milhar ou decimal' };
+  if (/^\d+\.\d{1,2}$/.test(s)) return { v: parseFloat(s), amb: true, motivo: 'o ponto em "' + s + '" pode ser decimal' };
+  if (/^\d+$/.test(s)) return { v: parseInt(s, 10) };                                                              // 3000
+  return null;
+}
+// devolve { valor, de, ate, marc, sinal, ambiguo, motivo } (índices de token) ou null. Prefere números marcados como dinheiro.
 function agValor(tokens, ignorar) {
-  var cand = [], n = tokens.length, i;
-  var ign = {}; (ignorar || []).forEach(function (k) { ign[k] = 1; });
+  var cand = [], n = tokens.length, i, ign = {};
+  (ignorar || []).forEach(function (k) { ign[k] = 1; });
   for (i = 0; i < n; i++) {
     if (ign[i]) continue;
-    var t = tokens[i], m = t.match(/^([+-]?)(?:r\$)?(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(k|mil)?$/), marc = /^r\$/.test(t) || (/\d/.test(t) && /r\$/.test(t));
-    if (!m && t === 'r$' && tokens[i + 1] && /^\d/.test(tokens[i + 1])) { marc = true; continue; }
-    if (!m) continue;
-    var txt = m[2], v;
-    if (/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(txt)) v = parseFloat(txt.replace(/\./g, '').replace(',', '.'));
-    else v = parseFloat(txt.replace(',', '.'));
-    if (!isFinite(v)) continue;
-    var de = i, ate = i, suf = m[3];
-    if (!suf && tokens[i + 1] === 'mil') { suf = 'mil'; ate = i + 1; }
-    if (!suf && tokens[i + 1] === 'k') { suf = 'k'; ate = i + 1; }
-    if (suf) v *= 1000;
-    if (i > 0 && tokens[i - 1] === 'r$') { marc = true; de = i - 1; }
+    var t = tokens[i], marc = false, sinal = '', de = i;
+    if (t === 'r$') { if (tokens[i + 1] && /^[+-]?\d/.test(tokens[i + 1]) && !ign[i + 1]) { marc = true; de = i; i++; t = tokens[i]; } else continue; }
+    var m = t.match(/^([+-]?)(r\$)?(.+)$/); if (!m) continue;
+    sinal = m[1]; if (m[2]) marc = true;
+    var nt = agNumTok(m[3]); if (!nt) continue;
+    var v = nt.v, ate = i, amb = !!nt.amb, motivo = nt.motivo || '';
+    if (!nt.suf) {
+      var mult = AG_MULT[tokens[i + 1]];
+      if (mult && !ign[i + 1] && tokens[i + 1] !== 'k') { v *= mult; ate = i + 1; amb = false; motivo = ''; }
+      else if (tokens[i + 1] === 'k') { v *= 1000; ate = i + 1; amb = false; motivo = ''; }
+      if (ate > i && AG_MULT[tokens[ate]] === 1000 && tokens[ate + 1] === 'e') {   // "3 mil e 500" · "2 mil e quinhentos"
+        var rest = tokens.slice(ate + 2), mr = null, ex = agPorExtenso(rest)[0];
+        if (rest[0] && /^\d{1,3}$/.test(rest[0])) mr = { v: parseInt(rest[0], 10), len: 1 };
+        else if (ex && ex.de === 0 && ex.valor < 1000) mr = { v: ex.valor, len: ex.ate + 1 };
+        if (mr) { v += mr.v; ate = ate + 1 + mr.len; }
+      }
+    } else if (tokens[i + 1] === 'e' && false) { /* sem uso */ }
     if (tokens[ate + 1] && AG_MOEDA_PAL.test(tokens[ate + 1])) { marc = true; ate++; }
-    cand.push({ valor: Math.round(v * 100) / 100, de: de, ate: ate, marc: marc, sinal: m[1] });
+    if (!isFinite(v) || v <= 0 || v >= AG_VALOR_MAX) continue;
+    cand.push({ valor: Math.round(v * 100) / 100, de: de, ate: ate, marc: marc, sinal: sinal, ambiguo: amb, motivo: motivo });
     i = ate;
   }
   agPorExtenso(tokens).forEach(function (e) {
     var k, bloq = false; for (k = e.de; k <= e.ate; k++) if (ign[k]) bloq = true;
-    if (bloq || !(e.valor > 0)) return;
+    if (bloq || !(e.valor > 0) || e.valor >= AG_VALOR_MAX) return;
+    if (cand.some(function (c) { return c.de <= e.ate && e.de <= c.ate; })) return;   // já lido como número
     var ate = e.ate, marc = false;
     if (tokens[ate + 1] && AG_MOEDA_PAL.test(tokens[ate + 1])) { marc = true; ate++; }
-    cand.push({ valor: e.valor, de: e.de, ate: ate, marc: marc, sinal: '' });
+    cand.push({ valor: e.valor, de: e.de, ate: ate, marc: marc, sinal: '', ambiguo: false, motivo: '' });
   });
   if (!cand.length) return null;
   cand.sort(function (a, b) { return (b.marc ? 1 : 0) - (a.marc ? 1 : 0) || a.de - b.de; });
-  return cand[0];
+  var esc = cand[0], outros = cand.filter(function (c) { return c !== esc && !c.marc; });
+  if (!esc.marc && outros.length) { esc.ambiguo = true; esc.motivo = esc.motivo || 'há mais de um número na frase'; }
+  return esc;
+}
+// Texto inteiro de um campo de valor ("R$ 3.000,00", "3k", "1,5 milhão") -> { ok, valor, ambiguo, motivo }. Para formulários e servidor.
+function agParseValorTexto(txt) {
+  var t = agNorm(String(txt == null ? '' : txt)).replace(/^r\$\s*/, 'r$').replace(/\s+/g, ' ').trim(), sinal = '';
+  if (!t) return { ok: false, valor: NaN, ambiguo: false, motivo: 'vazio' };
+  if (/^[+-]?(r\$)?\s*0+([.,]0+)?$/.test(t)) return { ok: true, valor: 0, ambiguo: false, motivo: '' };
+  if (/^-/.test(t)) { sinal = '-'; t = t.slice(1).trim(); }
+  var tk = t.split(' '), v = agValor(tk, []);
+  if (!v || v.de !== 0 || v.ate !== tk.length - 1) {
+    var ex = agPorExtenso(tk)[0]; if (ex && ex.de === 0 && ex.ate === tk.length - 1 && ex.valor > 0) return { ok: true, valor: sinal === '-' ? -ex.valor : ex.valor, ambiguo: false, motivo: '' };
+    return { ok: false, valor: NaN, ambiguo: false, motivo: 'formato não reconhecido' };
+  }
+  return { ok: true, valor: sinal === '-' ? -v.valor : v.valor, ambiguo: v.ambiguo, motivo: v.motivo };
 }
 
 /* ---------- datas e períodos ---------- */
@@ -1765,7 +1805,7 @@ function agParseLancamento(texto, dados) {
   var conta = agContaDe(tk, dados);
   // tira o nome da conta da descrição
   if (conta && conta.explicita) { var nc = agNorm(conta.conta.nome).split(' '); restoN = restoN.filter(function (x) { return nc.indexOf(x) < 0; }); resto = resto.filter(function (x) { return nc.indexOf(agNorm(x)) < 0; }); desc = resto.join(' '); }
-  return { tipo: tipo, valor: v ? v.valor : null, data: d.data, dataExplicita: d.explicita, descricao: agCap(desc), tokensDesc: restoN, categoria: cat, conta: conta, temVerbo: verbo !== null, ntk: tk.length };
+  return { tipo: tipo, valor: v ? v.valor : null, valorAmbiguo: !!(v && v.ambiguo), motivoValor: v ? v.motivo : '', data: d.data, dataExplicita: d.explicita, descricao: agCap(desc), tokensDesc: restoN, categoria: cat, conta: conta, temVerbo: verbo !== null, ntk: tk.length };
 }
 
 /* ---------- consulta de lançamentos ---------- */
@@ -1949,6 +1989,81 @@ function agAcharLanc(dados, tokensAlvo, tipo, valorHint) {
 }
 function agDescLanc(dados, l) { var c = agCatId(dados, l.categoriaId); return (l.descricao || 'Sem descrição') + ' — ' + agBrl(l.valor) + ' (' + (l.tipo === 'despesa' ? 'despesa' : 'receita') + ', ' + agDataBR(l.data) + (c ? ', ' + c.nome : '') + ')'; }
 
+/* ---------- COPILOTO: guia do app, glossário, consultas, inconsistências ---------- */
+var AG_GUIA = [
+  { tela: 'jornada', rotulo: 'Jornada', nomes: 'jornada cerebro inicio home', desc: 'visão geral em 3D: cada região do cérebro representa uma parte do seu dinheiro.', como: ['Toque numa região para ver o resumo dela.', 'Use o botão do cérebro para ligar ou desligar o 3D.'] },
+  { tela: 'painel', rotulo: 'Painel', nomes: 'painel dashboard indicadores graficos resumo relatorio relatorios', desc: 'saldo nas contas, receitas, despesas do mês e o gráfico dos últimos 6 meses.', como: ['Troque o mês nas setas do topo.', 'Os cartões mostram saldo, receitas e despesas; o gráfico compara os últimos 6 meses.'] },
+  { tela: 'lanc', rotulo: 'Lançamentos', nomes: 'lancamento lancamentos transacao transacoes movimentacao movimentacoes extrato gasto gastos despesa despesas receita receitas registrar lancar', desc: 'onde você registra e consulta receitas e despesas.', como: ['Escolha Despesa ou Receita.', 'Informe valor, data, conta e categoria (a descrição é opcional).', 'Toque em Salvar. Dá para editar ou excluir na lista.', 'Atalho: diga ao Rumi "gastei 45 no almoço".'] },
+  { tela: 'orc', rotulo: 'Orçamentos', nomes: 'orcamento orcamentos planejamento planejar', desc: 'limite mensal por categoria e acompanhamento do planejado contra o realizado.', como: ['Escolha a categoria e o limite do mês.', 'Toque em Definir limite.', 'Use "Copiar do mês anterior" para repetir o planejamento.'] },
+  { tela: 'metas', rotulo: 'Metas', nomes: 'meta metas objetivo objetivos sonho', desc: 'objetivos de poupança com valor alvo, prazo e quanto você já guardou.', como: ['Em "Nova meta", informe o nome (ex.: Viagem) e o valor alvo.', 'Opcional: quanto já guardou e o prazo.', 'Toque em Criar meta. Depois dá para registrar aportes.', 'Atalho: diga ao Rumi "criar meta Viagem de 5 mil".'] },
+  { tela: 'contas', rotulo: 'Contas', nomes: 'conta contas carteira banco saldo inicial', desc: 'suas contas e carteiras, com o saldo de cada uma.', como: ['Informe o nome (ex.: Banco principal), o tipo e o saldo inicial.', 'Toque em Adicionar conta.'] },
+  { tela: 'cats', rotulo: 'Categorias', nomes: 'categoria categorias classificar', desc: 'as categorias de despesas e receitas.', como: ['Em "Nova categoria", informe o nome e o tipo.', 'Toque em Adicionar categoria. Dá para arquivar ou excluir (movendo os lançamentos).', 'Atalho: diga ao Rumi "criar categoria Pets".'] },
+  { tela: 'cambio', rotulo: 'Câmbio', nomes: 'cambio moeda moedas dolar euro cotacao conversor', desc: 'cotações e conversor de moedas.', como: ['Busque a moeda e toque na estrela para favoritar.', 'Use o conversor para calcular valores.'] },
+  { tela: 'cartoes', rotulo: 'Cartões', nomes: 'cartao cartoes fatura credito', desc: 'cartões de crédito, fatura atual, limite disponível e datas de fechamento.', como: ['Em "Novo cartão", informe nome, limite e os dias de fechamento e vencimento.', 'Lance as compras na conta do tipo cartão para ver a fatura.'] },
+  { tela: 'invest', rotulo: 'Investimentos', nomes: 'investimento investimentos ativo ativos acao acoes carteira', desc: 'seus ativos, quantidade, preço médio e a distribuição por classe.', como: ['Em "Novo ativo", informe nome, código, quantidade e preço médio.', 'Toque em Adicionar ativo.'] },
+  { tela: 'agenda', rotulo: 'Agenda', nomes: 'agenda lembrete lembretes vencimento vencimentos conta-a-pagar agendar', desc: 'contas a pagar e a receber, com lembretes.', como: ['Em "Novo item na agenda", informe descrição, valor e data.', 'Marque como concluído quando pagar.'] },
+  { tela: 'limites', rotulo: 'Limites', nomes: 'limite limites alerta alertas teto', desc: 'limites de gasto por categoria, conta ou geral, com alertas quando chegar perto.', como: ['Em "Novo limite de gastos", escolha o escopo e o valor.', 'Toque em Salvar limite. Os alertas aparecem no histórico.'] },
+  { tela: 'conexoes', rotulo: 'Conexões', nomes: 'conexao conexoes banco open-finance importar', desc: 'conexão bancária (Open Finance) para importar suas transações.', como: ['Leia e aceite o consentimento.', 'Toque em Conectar meu banco e siga o fluxo seguro.'] },
+  { tela: 'cons', rotulo: 'Consultor', nomes: 'consultor analise dicas', desc: 'análise automática do seu mês, com avisos e dicas.', como: ['Abra a tela para ver a análise do mês selecionado.', 'Toque em Reanalisar para atualizar.'] },
+  { tela: 'opcoes', rotulo: 'Opções', nomes: 'opcoes configuracao configuracoes ajustes tema preferencias permissoes privacidade', desc: 'aparência, permissões, memória e WhatsApp do Rumi, tutorial.', como: ['Troque tema, cores e tamanho do texto.', 'Em Permissões e privacidade você consulta e altera o que autorizou.', 'Aqui também ficam a memória do Rumi, o registro de ações e o WhatsApp.'] },
+  { tela: 'perfil', rotulo: 'Perfil', nomes: 'perfil conta-google foto apelido', desc: 'seus dados, foto e apelido.', como: ['Edite o apelido e a data de nascimento e toque em Salvar.'] },
+  { tela: 'ajuda', rotulo: 'Ajuda', nomes: 'ajuda suporte duvida duvidas faq contato', desc: 'perguntas frequentes e contato com o suporte.', como: ['Busque sua dúvida na caixa de pesquisa.', 'Se não achar, envie uma mensagem pelo app.'] }
+];
+var AG_GLOSS = [
+  ['saldo nas contas', 'a soma do saldo de todas as suas contas (cartões de crédito não entram: eles têm a fatura).', 'saldoLiquido'],
+  ['saldo do mês', 'receitas do mês menos despesas do mês. Positivo = sobrou dinheiro; negativo = gastou mais do que entrou.', 'saldoMes'],
+  ['saldo disponivel', 'estimativa de quanto você ainda pode gastar até o fim do mês: saldo das contas, menos faturas em aberto e menos contas fixas que ainda não apareceram.', 'disponivel'],
+  ['taxa de poupanca', 'a parte da renda do mês que sobrou: (receitas − despesas) ÷ receitas.', 'taxaPoup'],
+  ['limite', 'um teto de gastos (geral, por categoria ou por conta). O app avisa quando você chega perto ou passa.'],
+  ['orcamento', 'o valor que você planejou gastar por categoria no mês, comparado com o que realmente gastou.'],
+  ['meta', 'um objetivo de poupança com valor alvo e, se quiser, prazo. A barra mostra quanto já foi guardado.'],
+  ['fatura', 'o que você já gastou no cartão e ainda vai pagar. Fica como saldo negativo na conta do tipo cartão.'],
+  ['despesa recorrente', 'um gasto que se repete todo mês com valor parecido (internet, assinaturas). O Rumi identifica olhando 3 ou mais meses.'],
+  ['recorrente', 'um gasto que se repete todo mês com valor parecido (internet, assinaturas). O Rumi identifica olhando 3 ou mais meses.'],
+  ['projecao', 'uma estimativa de como o mês vai fechar, mantendo o ritmo atual de gastos. É uma estimativa, não um valor confirmado.'],
+  ['modo contador', 'a análise do Rumi sobre seus números reais: panorama, riscos, categorias que subiram e o que fazer. Sempre educativa.'],
+  ['cotacao', 'o preço de uma moeda em reais no dia. Nos lançamentos em moeda estrangeira, é a taxa usada na conversão.'],
+  ['open finance', 'sistema do Banco Central que permite importar suas transações do banco, com o seu consentimento.']
+];
+function agAchaGuia(t, dados) {   // texto normalizado -> item do guia (o de maior pontuação)
+  var tk = t.split(' '), melhor = null, ms = 0;
+  AG_GUIA.forEach(function (g) {
+    var pal = g.nomes.split(' '), sc = 0;
+    tk.forEach(function (w) { if (w.length >= 3 && pal.some(function (p) { return p === w || (w.length >= 5 && agDist1(p, w)); })) sc++; });
+    if (sc > ms) { ms = sc; melhor = g; }
+  });
+  return melhor;
+}
+function agTextoGuia(g, dados) {
+  return g.rotulo + ': ' + g.desc + '\n' + g.como.map(function (c, i) { return (i + 1) + '. ' + c; }).join('\n');
+}
+function agMetasTxt(dados) {
+  var ms = dados.metas || []; if (!ms.length) return 'Você ainda não tem metas. Diga "criar meta Viagem de 5 mil" ou abra Metas.';
+  return 'Suas metas:\n' + ms.slice(0, 8).map(function (m) { var pc = m.valorAlvo ? Math.round(m.valorAtual / m.valorAlvo * 100) : 0; return '• ' + m.nome + ': ' + agBrl(m.valorAtual) + ' de ' + agBrl(m.valorAlvo) + ' (' + pc + '%)' + (m.valorAlvo > m.valorAtual ? ', faltam ' + agBrl(m.valorAlvo - m.valorAtual) : ', concluída'); }).join('\n');
+}
+// Possíveis inconsistências nos dados (sempre "possíveis": só o usuário sabe o que está certo)
+function agInconsistencias(dados) {
+  var ls = dados.lancamentos || [], out = [], hoje = dados.hoje, i;
+  var vistos = {}, dup = [];
+  ls.forEach(function (l) { var k = [l.data, l.tipo, l.valor, l.contaId, agNorm(l.descricao)].join('|'); if (vistos[k]) dup.push(l); else vistos[k] = l; });
+  if (dup.length) out.push({ tipo: 'duplicados', n: dup.length, txt: dup.length + ' possível(is) duplicado(s) (mesma data, valor, conta e descrição): ' + dup.slice(0, 3).map(function (l) { return (l.descricao || 'sem descrição') + ' ' + agBrl(l.valor) + ' em ' + agDataBR(l.data); }).join('; ') + '.' });
+  var semCat = ls.filter(function (l) { return !l.categoriaId || !agCatId(dados, l.categoriaId); });
+  if (semCat.length) out.push({ tipo: 'sem_categoria', n: semCat.length, txt: semCat.length + ' lançamento(s) sem categoria: ' + semCat.slice(0, 3).map(function (l) { return (l.descricao || 'sem descrição') + ' ' + agBrl(l.valor); }).join('; ') + '.' });
+  var fut = ls.filter(function (l) { return l.data > hoje; }); if (fut.length) out.push({ tipo: 'futuros', n: fut.length, txt: fut.length + ' lançamento(s) com data futura: ' + fut.slice(0, 3).map(function (l) { return (l.descricao || 'sem descrição') + ' em ' + agDataBR(l.data); }).join('; ') + '.' });
+  var um = ls.filter(function (l) { return l.valor === 1; }); if (um.length) out.push({ tipo: 'valor_um', n: um.length, txt: um.length + ' lançamento(s) de exatamente R$ 1,00 (pode ser valor digitado errado): ' + um.slice(0, 3).map(function (l) { return (l.descricao || 'sem descrição') + ' em ' + agDataBR(l.data); }).join('; ') + '.' });
+  var porCat = {}; ls.forEach(function (l) { if (l.tipo === 'despesa' && l.categoriaId) (porCat[l.categoriaId] = porCat[l.categoriaId] || []).push(l); });
+  var alt = []; Object.keys(porCat).forEach(function (k) { var v = porCat[k]; if (v.length < 5) return; var ord = v.map(function (x) { return x.valor; }).sort(function (a, b) { return a - b; }), med = ord[Math.floor(ord.length / 2)]; v.forEach(function (l) { if (med > 0 && l.valor >= med * 8 && l.valor >= 200) alt.push(l); }); });
+  if (alt.length) out.push({ tipo: 'valor_alto', n: alt.length, txt: alt.length + ' valor(es) muito acima do normal da categoria: ' + alt.slice(0, 3).map(function (l) { return (l.descricao || 'sem descrição') + ' ' + agBrl(l.valor) + ' em ' + agDataBR(l.data); }).join('; ') + '.' });
+  var neg = (dados.contas || []).filter(function (c) { return c.tipo !== 'cartao' && c.saldo < 0; }); if (neg.length) out.push({ tipo: 'saldo_negativo', n: neg.length, txt: 'Conta(s) com saldo negativo: ' + neg.map(function (c) { return c.nome + ' ' + agBrl(c.saldo); }).join('; ') + ' (confira o saldo inicial ou lançamentos faltando).' });
+  var cats = dados.categorias || [], usadas = {}; ls.forEach(function (l) { usadas[l.categoriaId] = 1; });
+  return out;
+}
+function agRespondeGasto(dados, tipoC, catF, per) {
+  var lsq = agLancEm(dados, per.de, per.ate).filter(function (l) { return l.tipo === tipoC && (!catF || catF.ids.indexOf(l.categoriaId) >= 0); });
+  var soma = Math.round(lsq.reduce(function (a, l) { return a + l.valor; }, 0) * 100) / 100;
+  return (tipoC === 'receita' ? 'Você recebeu ' : 'Você gastou ') + agBrl(soma) + (catF ? ' com ' + catF.nome.toLowerCase() : '') + ' ' + per.rotulo + ' (' + lsq.length + ' lançamento' + (lsq.length === 1 ? '' : 's') + ').';
+}
+
 /* ---------- o turno de conversa ---------- */
 // estado: { pendente, ultimo }  ->  { resposta, acoes, estado, sugestoes, humor, relatorio }
 function agTurno(estado, texto, dados) {
@@ -1971,6 +2086,10 @@ function agTurno(estado, texto, dados) {
       if (sn === 'nao') { estado.pendente = null; return finaliza('Tudo bem, não fiz nada.', 'ok', AG_SUGESTOES); }
       estado.pendente = null;   // outra frase: descarta a pendência e trata como comando novo
       out.aviso = 'Descartei a confirmação anterior.';
+    } else if (p.tipo === 'confirmar_valor') {
+      var sv = agSimNao(t); estado.pendente = null;
+      if (sv === 'sim') return agTurno(estado, p.texto, Object.assign({}, dados, { valorConfirmado: p.valor }));
+      if (sv === 'nao') return finaliza('Ok, não registrei nada. Diga o valor de novo, por exemplo: "gastei R$ 3.000,00 no mercado".', 'ok', AG_SUGESTOES);
     } else if (p.tipo === 'perguntar') {
       var r = agResponderPergunta(p, orig, t, tk, dados);
       if (r) { if (r.pendente) { estado.pendente = r.pendente; return finaliza(r.resposta, 'espera', r.sugestoes); } estado.pendente = null; if (r.acoes) { out.acoes = r.acoes; } return finaliza(r.resposta, r.humor || 'confirmando', r.sugestoes); }
@@ -2015,6 +2134,66 @@ function agTurno(estado, texto, dados) {
     return finaliza('Isso é o que eu sei (você pode corrigir ou apagar em Configurações › Memória):\n' + itens.slice(0, 12).map(function (x) { return '• ' + (x.tipo === 'desc' ? '"' + x.chave + '" → ' + x.conteudo : x.tipo === 'conta_padrao' ? 'conta padrão: ' + x.conteudo : x.chave + ': ' + x.conteudo); }).join('\n'), 'ok');
   }
 
+  /* 2b) copiloto do app: navegação, como fazer, explicar tela/indicadores, tutorial */
+  if (/\b(tutorial|tour|primeiros passos|me mostra o app|me ensina a usar o app|como usar o app)\b/.test(t) && !/gast|receb/.test(t)) {
+    var ret = /continu|retom/.test(t); out.abrir = { tutorial: ret ? 'retomar' : 'iniciar', rotulo: ret ? 'Continuar o tutorial' : 'Iniciar o tutorial', auto: true };
+    return finaliza(ret ? 'Vamos continuar de onde você parou.' : 'Vou te mostrar o app passo a passo. Dá para pausar quando quiser.', 'apresentando');
+  }
+  if ((m = t.match(/^(?:abra|abrir|abre|ir para|ir pra|va para|vai para|vai pra|me leva(?:r)?(?: para| pra| ate)?|leve-me(?: para| ate)?|mostre|mostra|quero ver|quero abrir)\s+(?:a |o |as |os |minha |minhas |meu |meus |na |no |nas |nos )?(.+)$/)) && !/\d/.test(m[1])) {
+    var gd = agAchaGuia(agNorm(m[1]), dados);
+    if (gd) { out.abrir = { tela: gd.tela, rotulo: 'Abrir ' + gd.rotulo, auto: true }; return finaliza('Abrindo ' + gd.rotulo + '.', 'executando'); }
+  }
+  if (/(explica|explique|como (eu )?uso|pra que serve|para que serve|o que (e|faz|posso fazer)|me ajuda com|como funciona)\b.*\b(esta|essa|aqui|tela|pagina)\b|^(como uso (isso|aqui)|onde estou|o que posso fazer aqui)/.test(t) && dados.tela) {
+    var gt = AG_GUIA.filter(function (x) { return x.tela === dados.tela; })[0];
+    if (gt) return finaliza('Você está em ' + agTextoGuia(gt, dados), 'apresentando', ['Como lanço um gasto?', 'Como crio uma meta?', 'Verificar meus dados']);
+  }
+  if ((m = t.match(/^(?:o que (?:e|significa|quer dizer)|oque e|explique|explica|me explica|defina)\s+(?:o |a |os |as |um |uma )?(.+)$/)) && !/gast|receb|lanc/.test(m[1].split(' ')[0])) {
+    var termo = m[1].replace(/\?+$/, '').trim(), gl = AG_GLOSS.filter(function (x) { return termo.indexOf(x[0]) >= 0 || x[0].indexOf(termo) >= 0 && termo.length >= 4; })[0];
+    if (gl) { var extra = ''; if (gl[2]) { var an = agAnalise(dados), v = an[gl[2]]; if (v !== null && v !== undefined && !agPoucosDados(an)) extra = ' No seu caso, agora: ' + (gl[2] === 'taxaPoup' ? v + '%.' : agBrl(v) + '.'); } return finaliza(agCap(gl[0].replace('saldo disponivel', 'saldo disponível').replace('taxa de poupanca', 'taxa de poupança').replace('orcamento', 'orçamento').replace('projecao', 'projeção').replace('cotacao', 'cotação')) + ' é ' + gl[1] + extra, 'apresentando'); }
+    var gg = agAchaGuia(agNorm(termo), dados); if (gg && !/^(o|a)$/.test(termo)) return finaliza(agTextoGuia(gg, dados), 'apresentando');
+  }
+  if (/\b(como|onde|aonde|qual)\b.*\b(faco|fazer|crio|criar|cadastro|cadastrar|adiciono|adicionar|registro|registrar|lanco|lancar|uso|usar|configuro|configurar|defino|definir|vejo|ver|encontro|encontrar|acho|achar|fica|ficam|esta|estao|edito|editar|excluo|excluir|apago|apagar|conecto|conectar)\b|^(onde|como)\b|me ensina|me explica como/.test(t) && !/\d/.test(t) && !/(quanto|gastei|recebi|paguei)/.test(t)) {
+    var gc = agAchaGuia(t.replace(/\b(como|onde|eu|faco|fazer|crio|criar|cadastro|cadastrar|uso|usar|vejo|ver|fica|esta|um|uma|o|a|os|as|de|do|da|no|na|meu|minha|meus|minhas)\b/g, ' ').replace(/\s+/g, ' ').trim(), dados);
+    if (gc) { out.abrir = { tela: gc.tela, rotulo: 'Abrir ' + gc.rotulo, auto: false }; return finaliza('Em ' + agTextoGuia(gc, dados), 'apresentando', ['Abrir ' + gc.rotulo, 'Verificar meus dados']); }
+    if (/\b(app|aplicativo|sistema|rumo)\b/.test(t)) return finaliza('Posso explicar qualquer parte do app: Painel, Lançamentos, Orçamentos, Metas, Contas, Categorias, Cartões, Investimentos, Agenda, Limites, Câmbio, Conexões, Consultor e Opções. Diga, por exemplo, "como cadastro uma meta?" ou "onde vejo meus cartões?".', 'apresentando', ['Como crio uma meta?', 'Onde vejo meus cartões?', 'Iniciar tutorial']);
+  }
+  if (/verific(ar|a|que)|revis(ar|e)|confer(ir|e)|inconsistenc|(tem|ha) (algum )?erro|dados (estao )?(certos|corretos)|auditar/.test(t) && /(dados|lancamentos|contas|inconsistenc|erro|tudo)/.test(t)) {
+    var inc = agInconsistencias(dados);
+    if (!(dados.lancamentos || []).length) return finaliza('Ainda não há lançamentos para verificar.', 'ok');
+    if (!inc.length) return finaliza('Verifiquei seus lançamentos e contas e não encontrei duplicados, valores suspeitos, datas futuras ou lançamentos sem categoria. 👍', 'confirmando');
+    return finaliza('Encontrei ' + inc.length + ' ponto(s) para você conferir (são só indícios; você decide o que está certo):\n' + inc.map(function (x) { return '• ' + x.txt; }).join('\n') + '\nPara corrigir, diga por exemplo "altere o valor do mercado para 80" ou "apague o lançamento do almoço" (eu peço sua confirmação).', 'analisando');
+  }
+  /* 2c) consultas ao app: metas, limites, contas, categorias, agenda */
+  if (/\b(minhas?|meus?|quais|como estao|como esta|ver)\b.*\bmetas?\b|\bmetas?\b.*(andamento|progresso|quanto falta)/.test(t) && !/crie|criar|nova|cadastr|adicion/.test(t)) return finaliza(agMetasTxt(dados), 'analisando');
+  if (/\b(meus?|quais|como estao|ver)\b.*\blimites?\b/.test(t) && !/crie|criar|novo/.test(t)) { var lm = dados.limites || []; return finaliza(lm.length ? 'Seus limites neste mês:\n' + lm.slice(0, 8).map(function (x) { return '• ' + x.nome + ': ' + agBrl(x.gasto || 0) + ' de ' + agBrl(x.limite || 0) + (x.pct !== undefined ? ' (' + x.pct + '%)' : ''); }).join('\n') : 'Você ainda não definiu limites. Abra Limites para criar o primeiro.', 'analisando', lm.length ? [] : ['Abrir Limites']); }
+  if (/\b(minhas|quais|listar|liste)\b.*\bcontas\b|\bcontas (que )?(eu )?tenho\b/.test(t) && !/\d|compr|pagar|comprometer/.test(t)) return finaliza((dados.contas || []).length ? 'Suas contas:\n' + dados.contas.map(function (c) { return '• ' + c.nome + ' (' + c.tipo + '): ' + agBrl(c.saldo); }).join('\n') : 'Você ainda não tem contas.', 'analisando');
+  if (/\b(minhas|quais|listar|liste)\b.*\bcategorias\b/.test(t)) { var cs = (dados.categorias || []).filter(function (c) { return !c.arquivada; }); return finaliza('Categorias de despesa: ' + cs.filter(function (c) { return c.tipo === 'despesa'; }).map(function (c) { return c.nome; }).join(', ') + '.\nCategorias de receita: ' + cs.filter(function (c) { return c.tipo === 'receita'; }).map(function (c) { return c.nome; }).join(', ') + '.', 'analisando'); }
+  if (/(proximos?|pendentes?|a pagar|vencimentos?|agenda)/.test(t) && /(contas|pagar|vencimento|agenda|proximos|pendente)/.test(t) && !/crie|adicione|lance/.test(t)) { var ag = dados.agendaPendentes || []; return finaliza(ag.length ? 'Pendências na agenda:\n' + ag.slice(0, 8).map(function (x) { return '• ' + (x.data ? agDataBR(x.data) + ' ' : '') + (x.descricao || '(sem descrição)') + ': ' + agBrl(x.valor || 0); }).join('\n') : 'Nada pendente na agenda.', 'analisando'); }
+  /* 2d) criar meta / categoria (ferramentas validadas, com auditoria e desfazer) */
+  if ((m = t.match(/^(?:crie|criar|cria|nova|novo|quero criar|quero uma|cadastre|cadastrar|adicione|adicionar|adiciona)\s+(?:uma |a )?meta(?:\s+(?:de|para|chamada|chamado|:))?\s*(.*)$/))) {
+    if (!perm.criar) return finaliza('Você desativou minha permissão de criar. Dá para reativar em Opções › Rumi.', 'problema');
+    var vm = agValor(tk, []), nomeTk = [], resto = m[1] ? agOriginais(m[1]) : [];
+    var usadosM = {}; if (vm) { for (i = vm.de; i <= vm.ate; i++) usadosM[i] = 1; }
+    var tkAll = tk, pos = tkAll.indexOf('meta');
+    resto = tkAll.map(function (w, ix) { return { w: w, ix: ix }; }).filter(function (o) { return o.ix > pos && !usadosM[o.ix] && !AG_STOP[o.w] && o.w !== 'meta' && o.w !== 'valor' && o.w !== 'chamada'; }).map(function (o) { return agOriginais(orig)[o.ix].replace(/[,.;!?]+$/, ''); });
+    var nomeM = agCap(resto.join(' ').slice(0, 60));
+    if (vm && vm.ambiguo && dados.valorConfirmado !== vm.valor) { estado.pendente = { tipo: 'confirmar_valor', texto: orig, valor: vm.valor, expira: dados.expira }; return finaliza('Entendi o valor ' + agBrl(vm.valor) + ' (' + (vm.motivo || 'formato ambíguo') + '). Está certo? (sim/não)', 'identificando', ['Sim', 'Não']); }
+    if (!nomeM) { estado.pendente = { tipo: 'perguntar', falta: 'meta_nome', slots: { valor: vm ? vm.valor : null }, expira: dados.expira }; return finaliza('Qual é o nome da meta? (ex.: Viagem, Reserva de emergência)', 'espera'); }
+    if (!vm) { estado.pendente = { tipo: 'perguntar', falta: 'meta_valor', slots: { nome: nomeM }, expira: dados.expira }; return finaliza('Qual é o valor alvo da meta "' + nomeM + '"?', 'espera'); }
+    if ((dados.metas || []).some(function (x) { return agNorm(x.nome) === agNorm(nomeM); })) return finaliza('Já existe uma meta chamada "' + nomeM + '". Escolha outro nome ou abra Metas para editar.', 'problema');
+    out.acoes = [{ op: 'criar_meta', dados: { nome: nomeM, valorAlvo: vm.valor } }];
+    return finaliza('Meta criada: ' + nomeM + ', alvo de ' + agBrl(vm.valor) + '. Você pode registrar aportes na aba Metas.', 'confirmando');
+  }
+  if ((m = t.match(/^(?:crie|criar|cria|nova|novo|cadastre|cadastrar|adicione|adicionar|adiciona)\s+(?:uma |a )?categoria\s+(?:de |para |chamada |:)?\s*(.+)$/))) {
+    if (!perm.criar) return finaliza('Você desativou minha permissão de criar. Dá para reativar em Opções › Rumi.', 'problema');
+    var recC = /\b(receita|entrada)\b/.test(m[1]), nomeC = agCap(agOriginais(orig).slice(agTokens(orig).indexOf('categoria') + 1).filter(function (w) { var n = agNorm(w); return !AG_STOP[n] && n !== 'categoria' && n !== 'receita' && n !== 'despesa' && n !== 'chamada'; }).join(' ').replace(/[,.;!?]+$/, '').slice(0, 40));
+    if (!nomeC) return finaliza('Qual é o nome da categoria? Ex.: "criar categoria Pets".', 'espera');
+    var tpC = recC ? 'receita' : 'despesa';
+    if (agCatPorNome(dados, nomeC, tpC)) return finaliza('Já existe a categoria "' + nomeC + '" de ' + tpC + '.', 'problema');
+    out.acoes = [{ op: 'criar_categoria', dados: { nome: nomeC, tipo: tpC } }];
+    return finaliza('Categoria criada: ' + nomeC + ' (' + tpC + ').' + (recC ? '' : ' Se for de receita, diga "criar categoria ' + nomeC + ' de receita".'), 'confirmando');
+  }
+
   /* 3) Modo Contador */
   var foco = null;
   if (/modo contador|relatorio|analise completa|diagnostico|me de um panorama|resumo financeiro/.test(t)) foco = 'relatorio';
@@ -2042,12 +2221,16 @@ function agTurno(estado, texto, dados) {
     var ls = (dados.lancamentos || []).slice().sort(function (a, b) { return a.data < b.data ? 1 : -1; }).slice(0, 6);
     return finaliza(ls.length ? 'Últimos lançamentos:\n' + ls.map(function (l) { return '• ' + agDataBR(l.data) + ' ' + (l.descricao || '(sem descrição)') + ': ' + (l.tipo === 'despesa' ? '−' : '+') + agBrl(l.valor); }).join('\n') : 'Ainda não há lançamentos.', 'analisando');
   }
+  var fu = estado.ctx && estado.ctx.gasto ? t.match(/^(?:e|e o|e a|e os|e as|e no|e na|e em|e com|e de)\s+(.+)$/) : null;
+  if (fu && tk.length <= 6) {   // "e no mês passado?" / "e com mercado?" reaproveita a última consulta
+    var perF = agPeriodo(fu[1], dados.hoje), catN = agAcharCategoriaNaFrase(agTokens(fu[1]).filter(function (w) { return !AG_MESES[w] && ['mes', 'passado', 'hoje', 'ontem', 'semana'].indexOf(w) < 0; }), dados), g0 = estado.ctx.gasto;
+    if (perF.explicito || catN) { var per2 = perF.explicito ? perF : { de: g0.de, ate: g0.ate, rotulo: g0.rotulo }, cat2c = catN || (g0.catIds ? { ids: g0.catIds, nome: g0.catNome } : null); estado.ctx.gasto = { tipo: g0.tipo, de: per2.de, ate: per2.ate, rotulo: per2.rotulo, catIds: cat2c ? cat2c.ids : null, catNome: cat2c ? cat2c.nome : '' }; return finaliza(agRespondeGasto(dados, g0.tipo, cat2c, per2), 'analisando', AG_SUGESTOES); }
+  }
   if (/quanto (eu )?(gastei|gastamos|gasto|recebi|ganhei|entrou|paguei|sai[ur])|total de (gastos|despesas|receitas)|(minhas )?(despesas|receitas|gastos) (de|do|da|em|neste|este|esse|no)\b/.test(t) && !/lance|registr|adicione/.test(t)) {
     var per = agPeriodo(t, dados.hoje), rec = /recebi|ganhei|entrou|receita/.test(t) && !/gast|despesa|paguei/.test(t), tipoC = rec ? 'receita' : 'despesa';
     var tokensSemPer = tk.filter(function (w) { return !AG_MESES[w]; }), catF = agAcharCategoriaNaFrase(tokensSemPer.filter(function (w) { return ['mes', 'passado', 'hoje', 'ontem', 'semana'].indexOf(w) < 0; }), dados);
-    var lsq = agLancEm(dados, per.de, per.ate).filter(function (l) { return l.tipo === tipoC && (!catF || catF.ids.indexOf(l.categoriaId) >= 0); });
-    var soma = Math.round(lsq.reduce(function (a, l) { return a + l.valor; }, 0) * 100) / 100;
-    return finaliza((rec ? 'Você recebeu ' : 'Você gastou ') + agBrl(soma) + (catF ? ' com ' + catF.nome.toLowerCase() : '') + ' ' + per.rotulo + ' (' + lsq.length + ' lançamento' + (lsq.length === 1 ? '' : 's') + ').' + (catF || !lsq.length ? '' : ''), 'analisando', AG_SUGESTOES);
+    estado.ctx = Object.assign({}, estado.ctx, { gasto: { tipo: tipoC, de: per.de, ate: per.ate, rotulo: per.rotulo, catIds: catF ? catF.ids : null, catNome: catF ? catF.nome : '' } });
+    return finaliza(agRespondeGasto(dados, tipoC, catF, per), 'analisando', AG_SUGESTOES);
   }
 
   /* 5) alterar / excluir */
@@ -2101,7 +2284,12 @@ function agTurno(estado, texto, dados) {
     if (!perm.criar) return finaliza('Você desativou minha permissão de criar lançamentos. Dá para reativar em Configurações › Permissões.', 'problema');
     if (!temContas) return finaliza('Você ainda não tem nenhuma conta. Crie uma na aba Contas e eu registro daí em diante.', 'problema');
     if (!L.tipo) { estado.pendente = { tipo: 'perguntar', falta: 'tipo', slots: { valor: L.valor, data: L.data, descricao: L.descricao, contaId: L.conta.conta.id }, expira: dados.expira }; return finaliza('Foi uma despesa (saiu dinheiro) ou uma receita (entrou)? Valor: ' + agBrl(L.valor) + '.', 'espera', ['Despesa', 'Receita']); }
-    if (L.valor > 10000000) return finaliza('Esse valor parece alto demais; confirme o número e tente de novo.', 'problema');
+    if (!isFinite(L.valor) || L.valor <= 0) return finaliza('Não consegui entender o valor. Diga, por exemplo, "R$ 3.000,00", "3k" ou "3 mil reais".', 'problema');
+    if (L.valor > 100000000) return finaliza('Esse valor parece alto demais; confirme o número e tente de novo.', 'problema');
+    if (L.valorAmbiguo && dados.valorConfirmado !== L.valor) {   // nunca registra valor duvidoso sem confirmação
+      estado.pendente = { tipo: 'confirmar_valor', texto: orig, valor: L.valor, expira: dados.expira };
+      return finaliza('Entendi o valor ' + agBrl(L.valor) + ' (' + (L.motivoValor || 'o formato é ambíguo') + '). Está certo? (sim/não)', 'identificando', ['Sim', 'Não']);
+    }
     if (L.data > dados.hoje) return finaliza('Essa data está no futuro. Para compromissos futuros use a Agenda; para registrar, diga a data do gasto.', 'problema');
     if (!L.categoria) { estado.pendente = { tipo: 'perguntar', falta: 'categoria', slots: { tipo: L.tipo, valor: L.valor, data: L.data, descricao: L.descricao, contaId: L.conta.conta.id, tokensDesc: L.tokensDesc, origem: dados.origem }, expira: dados.expira };
       var opcoes = (dados.categorias || []).filter(function (c) { return !c.arquivada && c.tipo === L.tipo; }).map(function (c) { return c.nome; });
@@ -2156,6 +2344,16 @@ function agResponderPergunta(p, orig, t, tk, dados) {
     if (!c) { var cand = (dados.categorias || []).filter(function (x) { return !x.arquivada && x.tipo === s.tipo && agNorm(x.nome).indexOf(t) === 0 && t.length >= 3; }); if (cand.length === 1) c = cand[0]; }
     if (!c) return { pendente: p, resposta: 'Não achei essa categoria. Escolha uma destas: ' + (dados.categorias || []).filter(function (x) { return !x.arquivada && x.tipo === s.tipo; }).map(function (x) { return x.nome; }).join(', ') + '.', sugestoes: [] };
     return agFechaLanc(s, c, dados);
+  }
+  if (p.falta === 'meta_nome') {
+    var nm = agCap(orig.replace(/[,.;!?]+$/, '').slice(0, 60)); if (!nm || tk.length > 6) return null;
+    if (s.valor) return { resposta: 'Meta criada: ' + nm + ', alvo de ' + agBrl(s.valor) + '. Você pode registrar aportes na aba Metas.', acoes: [{ op: 'criar_meta', dados: { nome: nm, valorAlvo: s.valor } }], humor: 'confirmando' };
+    return { pendente: { tipo: 'perguntar', falta: 'meta_valor', slots: { nome: nm }, expira: p.expira }, resposta: 'Qual é o valor alvo da meta "' + nm + '"?' };
+  }
+  if (p.falta === 'meta_valor') {
+    var vv = agValor(tk, []); if (!vv || tk.length > 5) return null;
+    if (vv.ambiguo) return { pendente: p, resposta: 'Não tenho certeza do valor. Escreva de outro jeito, por exemplo "5.000,00" ou "5 mil".' };
+    return { resposta: 'Meta criada: ' + s.nome + ', alvo de ' + agBrl(vv.valor) + '. Você pode registrar aportes na aba Metas.', acoes: [{ op: 'criar_meta', dados: { nome: s.nome, valorAlvo: vv.valor } }], humor: 'confirmando' };
   }
   if (p.falta === 'conta_origem') {
     var destino = (dados.contas || []).filter(function (x) { return x.id === s.destinoId; })[0];
@@ -2221,7 +2419,7 @@ function agDados_(email, cfg, canal, encaminhada) {
     limites: [], metas: doUsuario_('Metas', email).map(sMeta_), agendaPendentes: []
   };
   try { d.limites = limitesDoMes_(email, ym); } catch (e) { /* opcional */ }
-  try { d.agendaPendentes = ACOES.listar_agenda({ email: email }, {}).pendentes.map(function (p) { return { tipo: p.tipo, valor: p.valor }; }); } catch (e2) { /* opcional */ }
+  try { d.agendaPendentes = ACOES.listar_agenda({ email: email }, {}).pendentes.map(function (p) { return { tipo: p.tipo, valor: p.valor, data: p.data || '', descricao: p.titulo || p.descricao || '' }; }); } catch (e2) { /* opcional */ }
   return d;
 }
 
@@ -2256,9 +2454,27 @@ function agExecuta_(u, cfg, a, ctx) {
     var campos = validarLanc_(email, a.dados);
     campos.Chave = chave; campos.Descricao = campos.Descricao || '';
     var novo = upsert_('Lancamentos', email, '', campos);
+    if (Number(novo.Valor) !== Math.round(Number(a.dados.valor) * 100) / 100) { excluirPorId_('Lancamentos', email, novo.Id); throw erro_('divergencia', 'O valor gravado não confere com o valor entendido; nada foi registrado.'); }
     agAudita_(email, ctx.canal, ctx.grupo, 'criar', novo.Id, null, agLancObj_(novo), (campos.Tipo === 'despesa' ? 'Despesa ' : 'Receita ') + brl_(campos.Valor) + ' — ' + campos.Descricao, ctx.msgId);
     if (campos.Tipo === 'despesa') (verificarLimites_(email, [campos.Data.slice(0, 7)]) || []).forEach(function (al) { ctx.alertas.push(al.mensagem); });
     return { resumo: campos.Descricao, lancId: novo.Id, extra: a.ultimo };
+  }
+  if (a.op === 'criar_meta') {
+    if (!cfg.criar) throw erro_('sem_permissao', 'A permissão de criar está desativada.');
+    var chM = 'ag:' + ctx.chave + ':' + ctx.idx, dM = doUsuario_('Metas', email).filter(function (x) { return x.Chave === chM; })[0];
+    if (dM) return { resumo: 'já criada', repetido: true };
+    var vM = Number(a.dados && a.dados.valorAlvo);
+    if (!(vM > 0) || vM > 1000000000) throw erro_('valor_invalido', 'O valor da meta é inválido; nada foi criado.');
+    var nM = ACOES.salvar_meta(u, { nome: a.dados.nome, valorAlvo: vM });
+    if (Number(nM.valorAlvo) !== Math.round(vM * 100) / 100 && Number(nM.valorAlvo) !== vM) { excluirPorId_('Metas', email, nM.id); throw erro_('divergencia', 'O valor gravado não confere com o valor entendido; nada foi criado.'); }
+    agAudita_(email, ctx.canal, ctx.grupo, 'criar_meta', nM.id, null, { Id: nM.id, Nome: nM.nome }, 'Meta ' + nM.nome + ' — ' + brl_(nM.valorAlvo), ctx.msgId);
+    return { resumo: 'meta ' + nM.nome, metaId: nM.id, extra: { descricao: nM.nome, chaveDesc: '', resumo: 'criação da meta' } };
+  }
+  if (a.op === 'criar_categoria') {
+    if (!cfg.criar) throw erro_('sem_permissao', 'A permissão de criar está desativada.');
+    var nC = ACOES.salvar_categoria(u, { nome: a.dados.nome, tipo: a.dados.tipo });
+    agAudita_(email, ctx.canal, ctx.grupo, 'criar_categoria', nC.id, null, { Id: nC.id, Nome: nC.nome }, 'Categoria ' + nC.nome + ' (' + nC.tipo + ')', ctx.msgId);
+    return { resumo: 'categoria ' + nC.nome, extra: { descricao: nC.nome, chaveDesc: '', resumo: 'criação da categoria' } };
   }
   if (a.op === 'alterar') {
     if (!cfg.editar) throw erro_('sem_permissao', 'A permissão de editar lançamentos está desativada.');
@@ -2311,12 +2527,14 @@ function agMemoriaGrava_(email, tipo, chave, conteudo) {
 
 // Desfaz todas as operações de um grupo (uma mensagem). Devolve quantas foram revertidas.
 function agDesfaz_(u, grupo) {
-  var email = u.email, regs = doUsuario_('AgenteAuditoria', email).filter(function (x) { return x.Grupo === String(grupo || '') && x.Desfeito !== 'sim' && (x.Op === 'criar' || x.Op === 'alterar' || x.Op === 'excluir'); });
+  var email = u.email, regs = doUsuario_('AgenteAuditoria', email).filter(function (x) { return x.Grupo === String(grupo || '') && x.Desfeito !== 'sim' && (x.Op === 'criar' || x.Op === 'alterar' || x.Op === 'excluir' || x.Op === 'criar_meta' || x.Op === 'criar_categoria'); });
   if (!regs.length) throw erro_('nada_a_desfazer', 'Não há nada para desfazer aqui (já foi desfeito ou não existe).');
   var n = 0;
   regs.slice().reverse().forEach(function (r) {
     var antes = r.Antes ? JSON.parse(r.Antes) : null;
-    if (r.Op === 'criar') { var l = agAchaLanc_(email, r.Alvo); if (l) excluirPorId_('Lancamentos', email, l.Id); }
+    if (r.Op === 'criar_meta') { try { excluirPorId_('Metas', email, r.Alvo); } catch (e0) { /* já removida */ } }
+    else if (r.Op === 'criar_categoria') { if (doUsuario_('Lancamentos', email).some(function (x) { return x.CategoriaId === r.Alvo; })) throw erro_('em_uso', 'A categoria já tem lançamentos; não dá para desfazer a criação.'); try { excluirPorId_('Categorias', email, r.Alvo); } catch (e1) { /* já removida */ } }
+    else if (r.Op === 'criar') { var l = agAchaLanc_(email, r.Alvo); if (l) excluirPorId_('Lancamentos', email, l.Id); }
     else if (r.Op === 'alterar') { var l2 = agAchaLanc_(email, r.Alvo); if (l2 && antes) upsert_('Lancamentos', email, l2.Id, { Data: antes.Data, Valor: antes.Valor, CategoriaId: antes.CategoriaId, Descricao: antes.Descricao }); }
     else if (r.Op === 'excluir' && antes && !agAchaLanc_(email, antes.Id)) {
       if (!doUsuario_('Contas', email).some(function (c) { return c.Id === antes.ContaId; })) throw erro_('conta_invalida', 'A conta desse lançamento não existe mais.');
@@ -2341,15 +2559,19 @@ function agHistorico_(email, canal, papel, texto, msgId) {
 }
 
 // Uma mensagem do usuário (app ou WhatsApp). Repetir o mesmo msgId devolve a resposta anterior sem executar de novo.
-function agProcessa_(u, texto, msgId, canal, encaminhada) {
+function agProcessa_(u, texto, msgId, canal, encaminhada, tela) {
   var email = u.email;
   texto = limpo_(texto, 500);
   if (!texto) throw erro_('vazio', 'Mensagem vazia.');
   msgId = limpo_(msgId, 80) || ('s-' + Utilities.getUuid());
   var anterior = doUsuario_('AgenteHistorico', email).filter(function (x) { return x.Papel === 'agente' && x.MsgId === msgId; })[0];
   if (anterior) { var salvo = {}; try { salvo = JSON.parse(String(anterior.Texto)); } catch (e) { /* texto simples */ } return Object.assign({ resposta: salvo.resposta || String(anterior.Texto), repetida: true, msgId: msgId }, salvo.resposta ? salvo : {}); }
+  if (!agPermitido_(email, 'privacidade')) {   // sem consentimento confirmado o Rumi não lê nem altera dados
+    return { resposta: 'Para consultar e registrar seus dados eu preciso da sua permissão de privacidade. Você pode revisar as permissões a qualquer momento.', humor: 'problema', sugestoes: [], executadas: [], grupo: '', pendente: false, msgId: msgId, canal: canal, permissao: 'privacidade' };
+  }
   agLimita_(email);
   var cfg = agConfig_(email), estado = agEstado_(email, canal), dados = agDados_(email, cfg, canal, encaminhada);
+  dados.tela = canal === 'app' ? limpo_(tela, 20) : ''; cfg.memoria = cfg.memoria && agPermitido_(email, 'memoria'); dados.memoria = cfg.memoria ? dados.memoria : [];
   var turno = agTurno(estado, texto, dados), grupo = Utilities.getUuid(), executadas = [], erroAcao = null;
   var ctx = { canal: canal, grupo: grupo, msgId: msgId, chave: msgId, idx: 0, alertas: [] }, ultimo = turno.estado.ultimo || null;
   for (var i = 0; i < turno.acoes.length; i++) {
@@ -2372,7 +2594,7 @@ function agProcessa_(u, texto, msgId, canal, encaminhada) {
   } else if (ctx.alertas.length) resposta += '\n⚠ ' + ctx.alertas.join('\n⚠ ');
   var novoEstado = turno.estado; novoEstado.ultimo = ultimo; if (novoEstado.ultimo && !novoEstado.ultimo.auditId) novoEstado.ultimo = null;
   agSalvaEstado_(email, canal, novoEstado);
-  var sai = { resposta: resposta, humor: humor, sugestoes: turno.sugestoes || [], executadas: executadas, grupo: executadas.length ? grupo : '', pendente: !!novoEstado.pendente, msgId: msgId, canal: canal };
+  var sai = { abrir: canal === 'app' ? (turno.abrir || null) : null, resposta: resposta, humor: humor, sugestoes: turno.sugestoes || [], executadas: executadas, grupo: executadas.length ? grupo : '', pendente: !!novoEstado.pendente, msgId: msgId, canal: canal };
   if (cfg.historico) { agHistorico_(email, canal, 'usuario', texto, ''); agHistorico_(email, canal, 'agente', JSON.stringify({ resposta: resposta, humor: humor, sugestoes: sai.sugestoes, executadas: executadas, grupo: sai.grupo }), msgId); }
   else agHistorico_(email, 'dedupe', 'agente', JSON.stringify({ resposta: resposta, humor: humor, sugestoes: [], executadas: executadas, grupo: sai.grupo }), msgId);   // só para deduplicar; apagado junto com o limite
   return sai;
@@ -2380,7 +2602,7 @@ function agProcessa_(u, texto, msgId, canal, encaminhada) {
 
 /* ---------- ações expostas ao app ---------- */
 LEITURAS.agente_historico = 1; LEITURAS.agente_memoria = 1; LEITURAS.agente_config = 1; LEITURAS.agente_auditoria = 1; LEITURAS.agente_zap_status = 1;
-ACOES.agente_mensagem = function (u, d) { return agProcessa_(u, d.texto, d.msgId, 'app', false); };
+ACOES.agente_mensagem = function (u, d) { return agProcessa_(u, d.texto, d.msgId, 'app', false, d.tela); };
 ACOES.agente_historico = function (u) {
   return doUsuario_('AgenteHistorico', u.email).filter(function (x) { return x.Canal === 'app' || x.Canal === 'whatsapp'; }).slice(-60).map(function (x) {
     if (x.Papel === 'usuario') return { papel: 'usuario', texto: x.Texto, data: x.Data, canal: x.Canal };
@@ -2395,7 +2617,7 @@ ACOES.agente_historico_limpar = function (u) {
   st.forEach(function (l) { apagarLinha_('AgentePendentes', l); });
   return { apagadas: ls.length };
 };
-ACOES.agente_config = function (u) { return { config: agConfig_(u.email), memorias: agMemorias_(u.email).length, whatsappConfigurado: agZapConfigurado_() }; };
+ACOES.agente_config = function (u) { return { config: agConfig_(u.email), memorias: agMemorias_(u.email).length, whatsappConfigurado: agZapConfigurado_(), permitido: { privacidade: agPermitido_(u.email, 'privacidade'), memoria: agPermitido_(u.email, 'memoria'), whatsapp: agPermitido_(u.email, 'whatsapp'), voz: agPermitido_(u.email, 'voz') } }; };
 ACOES.agente_config_salvar = function (u, d) {
   var c = agConfig_(u.email), n = Object.assign({}, c);
   Object.keys(AG_PERM_PADRAO).forEach(function (k) { if (typeof d[k] === 'boolean') n[k] = d[k]; });
@@ -2406,7 +2628,7 @@ ACOES.agente_config_salvar = function (u, d) {
 };
 ACOES.agente_memoria = function (u) { return agMemorias_(u.email).map(agMemItem_); };
 ACOES.agente_memoria_salvar = function (u, d) {
-  if (!agConfig_(u.email).memoria) throw erro_('sem_permissao', 'A memória está desativada.');
+  if (!agConfig_(u.email).memoria || !agPermitido_(u.email, 'memoria')) throw erro_('sem_permissao', 'A memória está desativada.');
   var r = agMemoriaGrava_(u.email, d.tipo || 'fato', d.chave, d.conteudo);
   agAudita_(u.email, 'app', Utilities.getUuid(), 'aprender', r.Id, null, { chave: d.chave, conteudo: d.conteudo }, 'Memória editada: ' + d.chave, '');
   return agMemItem_(r);
@@ -2423,9 +2645,56 @@ ACOES.agente_memoria_limpar = function (u) {
   return { apagadas: ls.length };
 };
 ACOES.agente_auditoria = function (u) {
-  return doUsuario_('AgenteAuditoria', u.email).slice(-50).reverse().map(function (x) { return { id: x.Id, data: x.Data, canal: x.Canal, op: x.Op, resumo: x.Resumo, desfeito: x.Desfeito === 'sim', grupo: x.Grupo, desfazivel: ['criar', 'alterar', 'excluir'].indexOf(x.Op) >= 0 }; });
+  return doUsuario_('AgenteAuditoria', u.email).slice(-50).reverse().map(function (x) { return { id: x.Id, data: x.Data, canal: x.Canal, op: x.Op, resumo: x.Resumo, desfeito: x.Desfeito === 'sim', grupo: x.Grupo, desfazivel: ['criar', 'alterar', 'excluir', 'criar_meta', 'criar_categoria'].indexOf(x.Op) >= 0 }; });
 };
 ACOES.agente_desfazer = function (u, d) { var n = agDesfaz_(u, d.grupo); return { revertidas: n }; };
+
+
+/* ---------- Permissões e consentimento (LGPD) ---------- */
+var CONSENT_VERSAO = 1;
+var PERMISSOES_DEF = { privacidade: 'Tratamento dos meus dados financeiros pelo Rumi', memoria: 'Memória e aprendizado do Rumi', whatsapp: 'Integração com o WhatsApp', voz: 'Uso do microfone e da voz' };
+function agPermissoes_(email) {
+  var rows = doUsuario_('Permissoes', email), out = {};
+  Object.keys(PERMISSOES_DEF).forEach(function (k) { out[k] = { chave: k, estado: '', data: '', versao: 0 }; });
+  rows.forEach(function (r) { if (out[r.Chave]) out[r.Chave] = { chave: r.Chave, estado: String(r.Estado), data: String(r.Data), versao: Number(r.Versao) || 0 }; });
+  return out;
+}
+// Só vale "concedida" quando o usuário confirmou, na versão vigente do termo. Ausente ou adiada = não concedida.
+function agPermitido_(email, chave) { var p = agPermissoes_(email)[chave]; return !!p && p.estado === 'concedida' && p.versao >= CONSENT_VERSAO; }
+LEITURAS.permissoes_listar = 1; LEITURAS.onboarding_estado = 1;
+ACOES.permissoes_listar = function (u) {
+  var p = agPermissoes_(u.email), itens = Object.keys(p).map(function (k) { return Object.assign({ rotulo: PERMISSOES_DEF[k] }, p[k], { concedida: agPermitido_(u.email, k) }); });
+  var perguntar = itens.filter(function (i) { return i.estado === '' || ((i.estado === 'concedida' || i.estado === 'negada') && i.versao < CONSENT_VERSAO); }).map(function (i) { return i.chave; });
+  return { versao: CONSENT_VERSAO, itens: itens, perguntar: perguntar };
+};
+ACOES.permissoes_salvar = function (u, d) {
+  var itens = d.itens || {}, antes = agPermissoes_(u.email), alter = [];
+  Object.keys(itens).forEach(function (k) {
+    var est = String(itens[k]);
+    if (!PERMISSOES_DEF[k] || ['concedida', 'negada', 'adiada'].indexOf(est) < 0) throw erro_('permissao_invalida', 'Permissão inválida.');
+    if (est === 'adiada' && (antes[k].estado === 'concedida' || antes[k].estado === 'negada')) return;   // "decidir depois" não desfaz uma resposta já dada
+    var r = doUsuario_('Permissoes', u.email).filter(function (x) { return x.Chave === k; })[0];
+    upsert_('Permissoes', u.email, r ? r.Id : '', { Chave: k, Estado: est, Versao: CONSENT_VERSAO, Data: agora_() });
+    if (est !== antes[k].estado) alter.push(k + ': ' + (est === 'concedida' ? 'concedida' : est === 'negada' ? 'negada' : 'adiada'));
+  });
+  if (alter.length) agAudita_(u.email, 'app', Utilities.getUuid(), 'config', '', null, null, 'Permissões: ' + alter.join('; '), '');
+  return ACOES.permissoes_listar(u);
+};
+
+/* ---------- Tutorial de primeiro acesso ---------- */
+var TUTORIAL_ETAPAS = 10;
+ACOES.onboarding_estado = function (u) {
+  var r = doUsuario_('Onboarding', u.email)[0];
+  var existente = !r && doUsuario_('Lancamentos', u.email).length >= 5;   // quem já usa o app não recebe o tutorial automaticamente
+  return { estado: r ? String(r.Estado) : 'novo', passo: r ? Number(r.Passo) || 0 : 0, etapas: TUTORIAL_ETAPAS, automatico: !r && !existente };
+};
+ACOES.onboarding_salvar = function (u, d) {
+  var est = String(d.estado || ''); if (['em_andamento', 'concluido', 'pulado'].indexOf(est) < 0) throw erro_('estado_invalido', 'Estado do tutorial inválido.');
+  var passo = Math.max(0, Math.min(TUTORIAL_ETAPAS, Math.floor(Number(d.passo) || 0)));
+  var r = doUsuario_('Onboarding', u.email)[0];
+  upsert_('Onboarding', u.email, r ? r.Id : '', { Passo: est === 'concluido' ? TUTORIAL_ETAPAS : passo, Estado: est, Atualizado: agora_() });
+  return ACOES.onboarding_estado(u);
+};
 
 /* ---------- WhatsApp (API oficial da Meta — WhatsApp Cloud API) ---------- */
 function agProp_(k) { return PropertiesService.getScriptProperties().getProperty(k) || ''; }
@@ -2438,6 +2707,7 @@ function agZapEnvia_(para, texto) {
   } catch (e) { console.error('zap envio'); return false; }
 }
 ACOES.agente_zap_codigo = function (u) {
+  if (!agPermitido_(u.email, 'whatsapp')) throw erro_('sem_permissao', 'Autorize a integração com o WhatsApp em Opções › Permissões antes de conectar.');
   var cod = Utilities.getUuid().replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase(), exp = agMais_(15);
   var r = doUsuario_('ZapVinculos', u.email)[0];
   if (r) atualizar_('ZapVinculos', r._linha, Object.assign({}, r, { Codigo: cod, Expira: exp }));
@@ -2493,6 +2763,7 @@ function agZapMensagem_(msg, wamid, de) {
     return;
   }
   var u = { email: String(vinc.Email).toLowerCase(), nome: '' };
+  if (!agPermitido_(u.email, 'whatsapp')) { agZapEnvia_(de, 'A integração com o WhatsApp está desativada nas permissões do app. Reative em Opções › Permissões para continuar.'); return; }
   if (!texto) { agZapEnvia_(de, 'Por enquanto leio só texto. Para um comprovante, cole o texto dele aqui (ex.: "compra aprovada R$ 89,90 em Loja X") e eu registro com a sua confirmação.'); return; }
   var enc = !!(msg.context && (msg.context.forwarded || msg.context.frequently_forwarded));
   var r = agProcessa_(u, texto, 'wa:' + wamid, 'whatsapp', enc);

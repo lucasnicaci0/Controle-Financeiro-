@@ -20,7 +20,7 @@ function gerar() {
   src = injeta(src, 'AGENTE', 'AGENTE', serv, ancora);
   fs.writeFileSync(arq, src);
   const espelho = '/* GERADO por apps-script/montar.js a partir de apps-script/agente_core.js — não edite aqui. */\n(function (g) {\n' + core +
-    '\n  g.AgenteCore = { turno: agTurno, contador: agContador, analise: agAnalise, parseLancamento: agParseLancamento, brl: agBrl, nome: AG_NOME, sugestoes: AG_SUGESTOES };\n})(typeof window !== \'undefined\' ? window : globalThis);\n';
+    '\n  g.AgenteCore = { turno: agTurno, contador: agContador, analise: agAnalise, parseLancamento: agParseLancamento, parseValor: agParseValorTexto, brl: agBrl, nome: AG_NOME, sugestoes: AG_SUGESTOES };\n})(typeof window !== \'undefined\' ? window : globalThis);\n';
   fs.mkdirSync(path.join(raiz, 'js/servicos'), { recursive: true });
   fs.writeFileSync(path.join(raiz, 'js/servicos/agente-core.js'), espelho);
 }

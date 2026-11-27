@@ -9,7 +9,7 @@ const { chromium } = require('playwright');
     console.log(nome);
     const pg = await (await b.newContext({ viewport: vp })).newPage(); const erros = [];
     pg.on('pageerror', e => erros.push(e.message));
-    await pg.goto('http://localhost:8099/index.html?q=1&demo'); await pg.waitForTimeout(2500);
+    await pg.goto('http://localhost:8099/index.html?q=1&demo&semintro'); await pg.waitForTimeout(2500);
     
     // planos
     await pg.evaluate(() => scrollTo(0, document.body.scrollHeight)); await pg.waitForTimeout(500);

@@ -16,7 +16,7 @@ function png() { const zlib = require('zlib'), w = 64, h = 48, raw = Buffer.allo
     console.log(nome);
     const ctx = await b.newContext({ viewport: vp }); const pg = await ctx.newPage(); const erros = [];
     pg.on('pageerror', e => erros.push(e.message)); pg.on('dialog', d => d.accept());
-    await pg.goto('http://localhost:8095/index.html?q=1&demo'); await pg.waitForTimeout(2500);
+    await pg.goto('http://localhost:8095/index.html?q=1&demo&semintro'); await pg.waitForTimeout(2500);
     const nav = v => pg.evaluate(v => document.querySelector('#nav button[data-v=' + v + ']').click(), v).then(() => pg.waitForTimeout(700));
     const css = (v) => pg.evaluate(v => getComputedStyle(document.documentElement).getPropertyValue(v).trim(), v);
     await nav('opcoes');

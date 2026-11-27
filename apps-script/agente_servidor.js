@@ -29,7 +29,7 @@ function agDados_(email, cfg, canal, encaminhada) {
     limites: [], metas: doUsuario_('Metas', email).map(sMeta_), agendaPendentes: []
   };
   try { d.limites = limitesDoMes_(email, ym); } catch (e) { /* opcional */ }
-  try { d.agendaPendentes = ACOES.listar_agenda({ email: email }, {}).pendentes.map(function (p) { return { tipo: p.tipo, valor: p.valor }; }); } catch (e2) { /* opcional */ }
+  try { d.agendaPendentes = ACOES.listar_agenda({ email: email }, {}).pendentes.map(function (p) { return { tipo: p.tipo, valor: p.valor, data: p.data || '', descricao: p.titulo || p.descricao || '' }; }); } catch (e2) { /* opcional */ }
   return d;
 }
 
@@ -64,9 +64,27 @@ function agExecuta_(u, cfg, a, ctx) {
     var campos = validarLanc_(email, a.dados);
     campos.Chave = chave; campos.Descricao = campos.Descricao || '';
     var novo = upsert_('Lancamentos', email, '', campos);
+    if (Number(novo.Valor) !== Math.round(Number(a.dados.valor) * 100) / 100) { excluirPorId_('Lancamentos', email, novo.Id); throw erro_('divergencia', 'O valor gravado não confere com o valor entendido; nada foi registrado.'); }
     agAudita_(email, ctx.canal, ctx.grupo, 'criar', novo.Id, null, agLancObj_(novo), (campos.Tipo === 'despesa' ? 'Despesa ' : 'Receita ') + brl_(campos.Valor) + ' — ' + campos.Descricao, ctx.msgId);
     if (campos.Tipo === 'despesa') (verificarLimites_(email, [campos.Data.slice(0, 7)]) || []).forEach(function (al) { ctx.alertas.push(al.mensagem); });
     return { resumo: campos.Descricao, lancId: novo.Id, extra: a.ultimo };
+  }
+  if (a.op === 'criar_meta') {
+    if (!cfg.criar) throw erro_('sem_permissao', 'A permissão de criar está desativada.');
+    var chM = 'ag:' + ctx.chave + ':' + ctx.idx, dM = doUsuario_('Metas', email).filter(function (x) { return x.Chave === chM; })[0];
+    if (dM) return { resumo: 'já criada', repetido: true };
+    var vM = Number(a.dados && a.dados.valorAlvo);
+    if (!(vM > 0) || vM > 1000000000) throw erro_('valor_invalido', 'O valor da meta é inválido; nada foi criado.');
+    var nM = ACOES.salvar_meta(u, { nome: a.dados.nome, valorAlvo: vM });
+    if (Number(nM.valorAlvo) !== Math.round(vM * 100) / 100 && Number(nM.valorAlvo) !== vM) { excluirPorId_('Metas', email, nM.id); throw erro_('divergencia', 'O valor gravado não confere com o valor entendido; nada foi criado.'); }
+    agAudita_(email, ctx.canal, ctx.grupo, 'criar_meta', nM.id, null, { Id: nM.id, Nome: nM.nome }, 'Meta ' + nM.nome + ' — ' + brl_(nM.valorAlvo), ctx.msgId);
+    return { resumo: 'meta ' + nM.nome, metaId: nM.id, extra: { descricao: nM.nome, chaveDesc: '', resumo: 'criação da meta' } };
+  }
+  if (a.op === 'criar_categoria') {
+    if (!cfg.criar) throw erro_('sem_permissao', 'A permissão de criar está desativada.');
+    var nC = ACOES.salvar_categoria(u, { nome: a.dados.nome, tipo: a.dados.tipo });
+    agAudita_(email, ctx.canal, ctx.grupo, 'criar_categoria', nC.id, null, { Id: nC.id, Nome: nC.nome }, 'Categoria ' + nC.nome + ' (' + nC.tipo + ')', ctx.msgId);
+    return { resumo: 'categoria ' + nC.nome, extra: { descricao: nC.nome, chaveDesc: '', resumo: 'criação da categoria' } };
   }
   if (a.op === 'alterar') {
     if (!cfg.editar) throw erro_('sem_permissao', 'A permissão de editar lançamentos está desativada.');
@@ -119,12 +137,14 @@ function agMemoriaGrava_(email, tipo, chave, conteudo) {
 
 // Desfaz todas as operações de um grupo (uma mensagem). Devolve quantas foram revertidas.
 function agDesfaz_(u, grupo) {
-  var email = u.email, regs = doUsuario_('AgenteAuditoria', email).filter(function (x) { return x.Grupo === String(grupo || '') && x.Desfeito !== 'sim' && (x.Op === 'criar' || x.Op === 'alterar' || x.Op === 'excluir'); });
+  var email = u.email, regs = doUsuario_('AgenteAuditoria', email).filter(function (x) { return x.Grupo === String(grupo || '') && x.Desfeito !== 'sim' && (x.Op === 'criar' || x.Op === 'alterar' || x.Op === 'excluir' || x.Op === 'criar_meta' || x.Op === 'criar_categoria'); });
   if (!regs.length) throw erro_('nada_a_desfazer', 'Não há nada para desfazer aqui (já foi desfeito ou não existe).');
   var n = 0;
   regs.slice().reverse().forEach(function (r) {
     var antes = r.Antes ? JSON.parse(r.Antes) : null;
-    if (r.Op === 'criar') { var l = agAchaLanc_(email, r.Alvo); if (l) excluirPorId_('Lancamentos', email, l.Id); }
+    if (r.Op === 'criar_meta') { try { excluirPorId_('Metas', email, r.Alvo); } catch (e0) { /* já removida */ } }
+    else if (r.Op === 'criar_categoria') { if (doUsuario_('Lancamentos', email).some(function (x) { return x.CategoriaId === r.Alvo; })) throw erro_('em_uso', 'A categoria já tem lançamentos; não dá para desfazer a criação.'); try { excluirPorId_('Categorias', email, r.Alvo); } catch (e1) { /* já removida */ } }
+    else if (r.Op === 'criar') { var l = agAchaLanc_(email, r.Alvo); if (l) excluirPorId_('Lancamentos', email, l.Id); }
     else if (r.Op === 'alterar') { var l2 = agAchaLanc_(email, r.Alvo); if (l2 && antes) upsert_('Lancamentos', email, l2.Id, { Data: antes.Data, Valor: antes.Valor, CategoriaId: antes.CategoriaId, Descricao: antes.Descricao }); }
     else if (r.Op === 'excluir' && antes && !agAchaLanc_(email, antes.Id)) {
       if (!doUsuario_('Contas', email).some(function (c) { return c.Id === antes.ContaId; })) throw erro_('conta_invalida', 'A conta desse lançamento não existe mais.');
@@ -149,15 +169,19 @@ function agHistorico_(email, canal, papel, texto, msgId) {
 }
 
 // Uma mensagem do usuário (app ou WhatsApp). Repetir o mesmo msgId devolve a resposta anterior sem executar de novo.
-function agProcessa_(u, texto, msgId, canal, encaminhada) {
+function agProcessa_(u, texto, msgId, canal, encaminhada, tela) {
   var email = u.email;
   texto = limpo_(texto, 500);
   if (!texto) throw erro_('vazio', 'Mensagem vazia.');
   msgId = limpo_(msgId, 80) || ('s-' + Utilities.getUuid());
   var anterior = doUsuario_('AgenteHistorico', email).filter(function (x) { return x.Papel === 'agente' && x.MsgId === msgId; })[0];
   if (anterior) { var salvo = {}; try { salvo = JSON.parse(String(anterior.Texto)); } catch (e) { /* texto simples */ } return Object.assign({ resposta: salvo.resposta || String(anterior.Texto), repetida: true, msgId: msgId }, salvo.resposta ? salvo : {}); }
+  if (!agPermitido_(email, 'privacidade')) {   // sem consentimento confirmado o Rumi não lê nem altera dados
+    return { resposta: 'Para consultar e registrar seus dados eu preciso da sua permissão de privacidade. Você pode revisar as permissões a qualquer momento.', humor: 'problema', sugestoes: [], executadas: [], grupo: '', pendente: false, msgId: msgId, canal: canal, permissao: 'privacidade' };
+  }
   agLimita_(email);
   var cfg = agConfig_(email), estado = agEstado_(email, canal), dados = agDados_(email, cfg, canal, encaminhada);
+  dados.tela = canal === 'app' ? limpo_(tela, 20) : ''; cfg.memoria = cfg.memoria && agPermitido_(email, 'memoria'); dados.memoria = cfg.memoria ? dados.memoria : [];
   var turno = agTurno(estado, texto, dados), grupo = Utilities.getUuid(), executadas = [], erroAcao = null;
   var ctx = { canal: canal, grupo: grupo, msgId: msgId, chave: msgId, idx: 0, alertas: [] }, ultimo = turno.estado.ultimo || null;
   for (var i = 0; i < turno.acoes.length; i++) {
@@ -180,7 +204,7 @@ function agProcessa_(u, texto, msgId, canal, encaminhada) {
   } else if (ctx.alertas.length) resposta += '\n⚠ ' + ctx.alertas.join('\n⚠ ');
   var novoEstado = turno.estado; novoEstado.ultimo = ultimo; if (novoEstado.ultimo && !novoEstado.ultimo.auditId) novoEstado.ultimo = null;
   agSalvaEstado_(email, canal, novoEstado);
-  var sai = { resposta: resposta, humor: humor, sugestoes: turno.sugestoes || [], executadas: executadas, grupo: executadas.length ? grupo : '', pendente: !!novoEstado.pendente, msgId: msgId, canal: canal };
+  var sai = { abrir: canal === 'app' ? (turno.abrir || null) : null, resposta: resposta, humor: humor, sugestoes: turno.sugestoes || [], executadas: executadas, grupo: executadas.length ? grupo : '', pendente: !!novoEstado.pendente, msgId: msgId, canal: canal };
   if (cfg.historico) { agHistorico_(email, canal, 'usuario', texto, ''); agHistorico_(email, canal, 'agente', JSON.stringify({ resposta: resposta, humor: humor, sugestoes: sai.sugestoes, executadas: executadas, grupo: sai.grupo }), msgId); }
   else agHistorico_(email, 'dedupe', 'agente', JSON.stringify({ resposta: resposta, humor: humor, sugestoes: [], executadas: executadas, grupo: sai.grupo }), msgId);   // só para deduplicar; apagado junto com o limite
   return sai;
@@ -188,7 +212,7 @@ function agProcessa_(u, texto, msgId, canal, encaminhada) {
 
 /* ---------- ações expostas ao app ---------- */
 LEITURAS.agente_historico = 1; LEITURAS.agente_memoria = 1; LEITURAS.agente_config = 1; LEITURAS.agente_auditoria = 1; LEITURAS.agente_zap_status = 1;
-ACOES.agente_mensagem = function (u, d) { return agProcessa_(u, d.texto, d.msgId, 'app', false); };
+ACOES.agente_mensagem = function (u, d) { return agProcessa_(u, d.texto, d.msgId, 'app', false, d.tela); };
 ACOES.agente_historico = function (u) {
   return doUsuario_('AgenteHistorico', u.email).filter(function (x) { return x.Canal === 'app' || x.Canal === 'whatsapp'; }).slice(-60).map(function (x) {
     if (x.Papel === 'usuario') return { papel: 'usuario', texto: x.Texto, data: x.Data, canal: x.Canal };
@@ -203,7 +227,7 @@ ACOES.agente_historico_limpar = function (u) {
   st.forEach(function (l) { apagarLinha_('AgentePendentes', l); });
   return { apagadas: ls.length };
 };
-ACOES.agente_config = function (u) { return { config: agConfig_(u.email), memorias: agMemorias_(u.email).length, whatsappConfigurado: agZapConfigurado_() }; };
+ACOES.agente_config = function (u) { return { config: agConfig_(u.email), memorias: agMemorias_(u.email).length, whatsappConfigurado: agZapConfigurado_(), permitido: { privacidade: agPermitido_(u.email, 'privacidade'), memoria: agPermitido_(u.email, 'memoria'), whatsapp: agPermitido_(u.email, 'whatsapp'), voz: agPermitido_(u.email, 'voz') } }; };
 ACOES.agente_config_salvar = function (u, d) {
   var c = agConfig_(u.email), n = Object.assign({}, c);
   Object.keys(AG_PERM_PADRAO).forEach(function (k) { if (typeof d[k] === 'boolean') n[k] = d[k]; });
@@ -214,7 +238,7 @@ ACOES.agente_config_salvar = function (u, d) {
 };
 ACOES.agente_memoria = function (u) { return agMemorias_(u.email).map(agMemItem_); };
 ACOES.agente_memoria_salvar = function (u, d) {
-  if (!agConfig_(u.email).memoria) throw erro_('sem_permissao', 'A memória está desativada.');
+  if (!agConfig_(u.email).memoria || !agPermitido_(u.email, 'memoria')) throw erro_('sem_permissao', 'A memória está desativada.');
   var r = agMemoriaGrava_(u.email, d.tipo || 'fato', d.chave, d.conteudo);
   agAudita_(u.email, 'app', Utilities.getUuid(), 'aprender', r.Id, null, { chave: d.chave, conteudo: d.conteudo }, 'Memória editada: ' + d.chave, '');
   return agMemItem_(r);
@@ -231,9 +255,56 @@ ACOES.agente_memoria_limpar = function (u) {
   return { apagadas: ls.length };
 };
 ACOES.agente_auditoria = function (u) {
-  return doUsuario_('AgenteAuditoria', u.email).slice(-50).reverse().map(function (x) { return { id: x.Id, data: x.Data, canal: x.Canal, op: x.Op, resumo: x.Resumo, desfeito: x.Desfeito === 'sim', grupo: x.Grupo, desfazivel: ['criar', 'alterar', 'excluir'].indexOf(x.Op) >= 0 }; });
+  return doUsuario_('AgenteAuditoria', u.email).slice(-50).reverse().map(function (x) { return { id: x.Id, data: x.Data, canal: x.Canal, op: x.Op, resumo: x.Resumo, desfeito: x.Desfeito === 'sim', grupo: x.Grupo, desfazivel: ['criar', 'alterar', 'excluir', 'criar_meta', 'criar_categoria'].indexOf(x.Op) >= 0 }; });
 };
 ACOES.agente_desfazer = function (u, d) { var n = agDesfaz_(u, d.grupo); return { revertidas: n }; };
+
+
+/* ---------- Permissões e consentimento (LGPD) ---------- */
+var CONSENT_VERSAO = 1;
+var PERMISSOES_DEF = { privacidade: 'Tratamento dos meus dados financeiros pelo Rumi', memoria: 'Memória e aprendizado do Rumi', whatsapp: 'Integração com o WhatsApp', voz: 'Uso do microfone e da voz' };
+function agPermissoes_(email) {
+  var rows = doUsuario_('Permissoes', email), out = {};
+  Object.keys(PERMISSOES_DEF).forEach(function (k) { out[k] = { chave: k, estado: '', data: '', versao: 0 }; });
+  rows.forEach(function (r) { if (out[r.Chave]) out[r.Chave] = { chave: r.Chave, estado: String(r.Estado), data: String(r.Data), versao: Number(r.Versao) || 0 }; });
+  return out;
+}
+// Só vale "concedida" quando o usuário confirmou, na versão vigente do termo. Ausente ou adiada = não concedida.
+function agPermitido_(email, chave) { var p = agPermissoes_(email)[chave]; return !!p && p.estado === 'concedida' && p.versao >= CONSENT_VERSAO; }
+LEITURAS.permissoes_listar = 1; LEITURAS.onboarding_estado = 1;
+ACOES.permissoes_listar = function (u) {
+  var p = agPermissoes_(u.email), itens = Object.keys(p).map(function (k) { return Object.assign({ rotulo: PERMISSOES_DEF[k] }, p[k], { concedida: agPermitido_(u.email, k) }); });
+  var perguntar = itens.filter(function (i) { return i.estado === '' || ((i.estado === 'concedida' || i.estado === 'negada') && i.versao < CONSENT_VERSAO); }).map(function (i) { return i.chave; });
+  return { versao: CONSENT_VERSAO, itens: itens, perguntar: perguntar };
+};
+ACOES.permissoes_salvar = function (u, d) {
+  var itens = d.itens || {}, antes = agPermissoes_(u.email), alter = [];
+  Object.keys(itens).forEach(function (k) {
+    var est = String(itens[k]);
+    if (!PERMISSOES_DEF[k] || ['concedida', 'negada', 'adiada'].indexOf(est) < 0) throw erro_('permissao_invalida', 'Permissão inválida.');
+    if (est === 'adiada' && (antes[k].estado === 'concedida' || antes[k].estado === 'negada')) return;   // "decidir depois" não desfaz uma resposta já dada
+    var r = doUsuario_('Permissoes', u.email).filter(function (x) { return x.Chave === k; })[0];
+    upsert_('Permissoes', u.email, r ? r.Id : '', { Chave: k, Estado: est, Versao: CONSENT_VERSAO, Data: agora_() });
+    if (est !== antes[k].estado) alter.push(k + ': ' + (est === 'concedida' ? 'concedida' : est === 'negada' ? 'negada' : 'adiada'));
+  });
+  if (alter.length) agAudita_(u.email, 'app', Utilities.getUuid(), 'config', '', null, null, 'Permissões: ' + alter.join('; '), '');
+  return ACOES.permissoes_listar(u);
+};
+
+/* ---------- Tutorial de primeiro acesso ---------- */
+var TUTORIAL_ETAPAS = 10;
+ACOES.onboarding_estado = function (u) {
+  var r = doUsuario_('Onboarding', u.email)[0];
+  var existente = !r && doUsuario_('Lancamentos', u.email).length >= 5;   // quem já usa o app não recebe o tutorial automaticamente
+  return { estado: r ? String(r.Estado) : 'novo', passo: r ? Number(r.Passo) || 0 : 0, etapas: TUTORIAL_ETAPAS, automatico: !r && !existente };
+};
+ACOES.onboarding_salvar = function (u, d) {
+  var est = String(d.estado || ''); if (['em_andamento', 'concluido', 'pulado'].indexOf(est) < 0) throw erro_('estado_invalido', 'Estado do tutorial inválido.');
+  var passo = Math.max(0, Math.min(TUTORIAL_ETAPAS, Math.floor(Number(d.passo) || 0)));
+  var r = doUsuario_('Onboarding', u.email)[0];
+  upsert_('Onboarding', u.email, r ? r.Id : '', { Passo: est === 'concluido' ? TUTORIAL_ETAPAS : passo, Estado: est, Atualizado: agora_() });
+  return ACOES.onboarding_estado(u);
+};
 
 /* ---------- WhatsApp (API oficial da Meta — WhatsApp Cloud API) ---------- */
 function agProp_(k) { return PropertiesService.getScriptProperties().getProperty(k) || ''; }
@@ -246,6 +317,7 @@ function agZapEnvia_(para, texto) {
   } catch (e) { console.error('zap envio'); return false; }
 }
 ACOES.agente_zap_codigo = function (u) {
+  if (!agPermitido_(u.email, 'whatsapp')) throw erro_('sem_permissao', 'Autorize a integração com o WhatsApp em Opções › Permissões antes de conectar.');
   var cod = Utilities.getUuid().replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase(), exp = agMais_(15);
   var r = doUsuario_('ZapVinculos', u.email)[0];
   if (r) atualizar_('ZapVinculos', r._linha, Object.assign({}, r, { Codigo: cod, Expira: exp }));
@@ -301,6 +373,7 @@ function agZapMensagem_(msg, wamid, de) {
     return;
   }
   var u = { email: String(vinc.Email).toLowerCase(), nome: '' };
+  if (!agPermitido_(u.email, 'whatsapp')) { agZapEnvia_(de, 'A integração com o WhatsApp está desativada nas permissões do app. Reative em Opções › Permissões para continuar.'); return; }
   if (!texto) { agZapEnvia_(de, 'Por enquanto leio só texto. Para um comprovante, cole o texto dele aqui (ex.: "compra aprovada R$ 89,90 em Loja X") e eu registro com a sua confirmação.'); return; }
   var enc = !!(msg.context && (msg.context.forwarded || msg.context.frequently_forwarded));
   var r = agProcessa_(u, texto, 'wa:' + wamid, 'whatsapp', enc);

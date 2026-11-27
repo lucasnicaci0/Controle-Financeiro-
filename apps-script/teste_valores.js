@@ -1,0 +1,40 @@
+// Interpretação de valores em dinheiro: todos os formatos pedidos, ambiguidade, formulários e persistência. Uso: node teste_valores.js
+const fs = require('fs'), path = require('path');
+const { novoContexto, token, chamar, confere, resultado, formatDate, FUSO } = require('./mock_google.js');
+const espelho = fs.readFileSync(path.join(__dirname, '..', 'js/servicos/agente-core.js'), 'utf8');
+const C = (() => { const g = {}; new Function('window', espelho)(g); return g.AgenteCore; })();
+const hoje = formatDate(new Date(), FUSO, 'yyyy-MM-dd');
+console.log('Formatos do campo de valor (formulários)');
+const tab = [['R$ 3.000,00', 3000], ['R$ 3000', 3000], ['3000', 3000], ['3.000', 3000], ['3k', 3000], ['3 mil', 3000], ['3 mil reais', 3000], ['2,5k', 2500], ['2.500,50', 2500.5], ['1500 reais', 1500], ['1 milhão', 1000000], ['1,5 milhão', 1500000], ['R$3.000,00', 3000], ['3,50', 3.5], ['0,99', 0.99], ['12,5', 12.5], ['1.234.567,89', 1234567.89], ['3 mil e 500', 3500], ['dois mil e quinhentos', 2500], ['um milhão', 1000000], ['2 milhões', 2000000], ['10k', 10000], ['0,5k', 500], ['R$ 45', 45], ['45,00', 45], ['1 mil', 1000], ['-12,50', -12.5], ['  R$   89,90 ', 89.9]];
+tab.forEach(([e, v]) => { const r = C.parseValor(e); confere('"' + e + '" -> ' + v, r.ok && Math.abs(r.valor - v) < 0.005, r); });
+console.log('Entradas inválidas nunca viram valor');
+['', 'abc', 'R$', '1,2,3', '1.2.3', '3,0000', '1e3', 'mil mil', 'um dois três x'].forEach(e => { const r = C.parseValor(e); confere('"' + e + '" rejeitado (sem valor padrão)', !r.ok && Number.isNaN(r.valor), r); });
+confere('zero é reconhecido como zero (não vira 1)', C.parseValor('0').valor === 0 && C.parseValor('0,00').valor === 0);
+console.log('Ambiguidade');
+confere('"3,000" e "12.5" são ambíguos; "3.000" e "3k" não', C.parseValor('3,000').ambiguo && C.parseValor('12.5').ambiguo && !C.parseValor('3.000').ambiguo && !C.parseValor('3k').ambiguo && !C.parseValor('2.500,50').ambiguo);
+
+console.log('Conversa: valor extraído = valor gravado');
+const cats = [['c1', 'Restaurantes', 'despesa'], ['c2', 'Mercado', 'despesa'], ['c5', 'Salário', 'receita']].map(a => ({ id: a[0], nome: a[1], tipo: a[2] }));
+const dados = { hoje, agora: hoje + 'T12:00:00', expira: hoje + 'T12:10:00', categorias: cats, memoria: [], contas: [{ id: 'a', nome: 'Conta', tipo: 'corrente', saldo: 0 }], lancamentos: [] };
+const frases = [['recebi R$ 3.000,00 de salário', 3000], ['recebi R$ 3000 de salário', 3000], ['recebi 3000 de salário', 3000], ['recebi 3.000 de salário', 3000], ['recebi 3k de salário', 3000], ['recebi 3 mil de salário', 3000], ['recebi 3 mil reais de salário', 3000], ['recebi 2,5k de salário', 2500], ['recebi 2.500,50 de salário', 2500.5], ['recebi 1500 reais de salário', 1500], ['recebi 1 milhão de salário', 1000000], ['recebi 1,5 milhão de salário', 1500000], ['gastei 3 mil e 500 no mercado', 3500], ['gastei R$ 45,90 no almoço', 45.9], ['gastei 45 reais no mercado', 45], ['paguei 1.250,90 no mercado', 1250.9], ['gastei dois mil reais no mercado', 2000], ['gastei 0,99 no mercado', 0.99], ['salário 4k', 4000], ['mercado R$89,90', 89.9]];
+frases.forEach(([f, v]) => { const r = C.turno({}, f, dados), a = r.acoes.find(x => x.op === 'lancar'); confere('"' + f + '" -> ' + v + ' (nunca R$ 1,00)', a && a.dados.valor === v && a.dados.valor !== 1, r.resposta); });
+['gastei no mercado', 'recebi salário', 'gastei muito no mercado', 'comprei algo no mercado'].forEach(f => { const r = C.turno({}, f, dados); confere('"' + f + '" sem valor: não registra nada', r.acoes.length === 0 && !/R\$ 1,00/.test(r.resposta), r.resposta); });
+let r = C.turno({}, 'gastei 3,000 no mercado', dados);
+confere('valor ambíguo: pede confirmação antes de registrar', r.acoes.length === 0 && r.estado.pendente.tipo === 'confirmar_valor' && /Está certo/.test(r.resposta), r.resposta);
+let r2 = C.turno(r.estado, 'sim', dados); confere('após "sim" registra exatamente o valor confirmado', r2.acoes.some(a => a.op === 'lancar' && a.dados.valor === 3000), r2.resposta);
+r2 = C.turno(r.estado, 'não', dados); confere('após "não" não registra', r2.acoes.length === 0 && /não registrei/.test(r2.resposta));
+r = C.turno({}, 'gastei 2 cafés de 5 reais no mercado', dados); confere('vários números: o marcado como dinheiro vence', r.acoes.some(a => a.dados && a.dados.valor === 5), r.resposta);
+r = C.turno({}, 'gastei 12 e 30 no mercado', dados); confere('vários números sem marca: pergunta em vez de chutar', r.acoes.length === 0 && r.estado.pendente && r.estado.pendente.tipo === 'confirmar_valor', r.resposta);
+
+console.log('Persistência (Apps Script simulado)');
+const ctx = novoContexto(); ctx.autorizar(); const A = token('ana@teste.com', 'Ana'); chamar(ctx, 'iniciar', A, {}); chamar(ctx, 'permissoes_salvar', A, { itens: { privacidade: 'concedida', memoria: 'concedida', whatsapp: 'negada', voz: 'negada' } });
+const M = t => chamar(ctx, 'agente_mensagem', A, { texto: t, msgId: 'v' + Math.random() });
+const lancs = () => chamar(ctx, 'listar_lancamentos', A, { mes: hoje.slice(0, 7) }).dados;
+frases.slice(0, 13).forEach(([f, v]) => { const n = lancs().length; const o = M(f); const novo = lancs(); confere('gravou ' + v + ' para "' + f + '"', o.ok && novo.length === n + 1 && novo.some(l => l.valor === v), o.dados && o.dados.resposta); });
+const n0 = lancs().length; M('gastei no mercado'); confere('sem valor nada é gravado no banco', lancs().length === n0);
+M('gastei 3,000 no mercado'); confere('ambíguo não grava até confirmar', lancs().length === n0); M('sim'); confere('grava 3000 depois da confirmação', lancs().length === n0 + 1 && lancs().some(l => l.valor === 3000 && l.descricao && /mercado/i.test(l.descricao)));
+console.log('Formulários / servidor com texto');
+const conta = chamar(ctx, 'listar_contas', A).dados[0], cat = chamar(ctx, 'listar_categorias', A).dados.find(c => c.tipo === 'despesa');
+[['3k', 3000], ['1.500', 1500], ['2,5 mil', 2500], ['R$ 1,5 milhão', 1500000], ['89,90', 89.9]].forEach(([t, v]) => { const x = chamar(ctx, 'salvar_lancamento', A, { tipo: 'despesa', data: hoje, valor: t, contaId: conta.id, categoriaId: cat.id, descricao: 'Form ' + t }); confere('formulário com "' + t + '" grava ' + v, x.ok && x.dados.valor === v, x); });
+['abc', '', '0', '-5'].forEach(t => { const x = chamar(ctx, 'salvar_lancamento', A, { tipo: 'despesa', data: hoje, valor: t, contaId: conta.id, categoriaId: cat.id, descricao: 'Inválido' }); confere('formulário rejeita "' + t + '"', x.ok === false, x); });
+const x = resultado(); console.log('\n' + x.ok + ' ok, ' + x.falhas + ' falha(s)'); process.exit(x.falhas ? 1 : 0);

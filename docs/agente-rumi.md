@@ -24,6 +24,23 @@ O mesmo núcleo atende o app e o WhatsApp, então os dois entendem as mesmas fra
 - **Desfazer** reverte o grupo de ações de uma mensagem (criação, alteração e exclusão).
 - Limite de 60 mensagens/hora por usuário; memória até 300 itens; histórico 200 mensagens.
 
+## Personagem flutuante (v1.8)
+- O Rumi **não tem aba nem menu**: é um personagem fixo no canto da tela (arrastável; a posição fica salva no aparelho). Tocar nele abre a conversa como diálogo (cartão no desktop, folha inferior no celular); fechar (✕, Esc ou fora do painel) volta à mesma tela, sem recarregar. No celular ele fica acima da barra de navegação, esmaece ao rolar e some enquanto você digita em outro campo.
+- Ajustes do Rumi (memória, ações permitidas, registro, WhatsApp) ficam em **Opções › Rumi**.
+- Arquivos: `js/agente/flutuante.js` (personagem + painel), `tela.js` (chat e ajustes), `permissoes.js`, `tutorial.js`.
+
+## Valores em dinheiro (correção do "R$ 1,00")
+Um único interpretador (`agParseValorTexto`/`AgenteCore.parseValor`, o mesmo no app, no servidor e nos formulários) entende: `R$ 3.000,00`, `R$ 3000`, `3000`, `3.000`, `3k`, `3 mil`, `3 mil reais`, `2,5k`, `2.500,50`, `1500 reais`, `1 milhão`, `1,5 milhão`. Não existe valor padrão: se não entender, não grava. Formatos ambíguos (`3,000`, `12.5`) geram pergunta de confirmação antes de gravar. Depois de gravar, o servidor confere que o valor persistido é igual ao interpretado; se divergir, desfaz. Testes: `teste_valores.js`.
+
+## Permissões e privacidade
+Primeiro acesso: uma etapa única com 4 permissões (privacidade/dados, memória, WhatsApp, voz), todas **desligadas** por padrão, cada uma com a finalidade e o que acontece se negar. "Decidir depois" mantém como não concedida e volta a perguntar no próximo acesso; o que já foi respondido não é perguntado de novo. O estado fica na aba `Permissoes` (por conta, com data e versão do termo) e é conferido **no servidor** em cada ação. Alteração em Opções › Permissões e privacidade. Sem a permissão de privacidade o Rumi não lê nem grava dados (o resto do app funciona normalmente).
+
+## Copiloto
+Além de lançar/consultar/alterar: abrir telas por comando ("abrir metas"), explicar a tela atual e indicadores ("o que é taxa de poupança"), guia passo a passo de cada módulo, consultar metas/limites/contas/categorias/agenda, criar meta e categoria (validadas, com auditoria e desfazer), verificar inconsistências (duplicados, sem categoria, datas futuras, R$ 1,00, valores muito altos, saldo negativo) e acompanhar o contexto da conversa ("e no mês passado?"). Toda alteração passa por ferramentas validadas no servidor (`criar_meta`, `criar_categoria`, `lancar`, `alterar`, `excluir`); o Rumi nunca acessa a planilha diretamente.
+
+## Tutorial de primeiro acesso
+10 passos (visão geral, navegação, painel, receitas/despesas, categorias, metas/planejamento, relatórios, configurações, WhatsApp — só se estiver disponível — e o Rumi), com destaque do elemento real, exemplo curto, barra de progresso, voltar/próximo/pausar/pular e botão "Perguntar ao Rumi". O progresso fica na aba `Onboarding`; quem concluiu ou pulou não vê de novo sozinho. Quem já tem 5 ou mais lançamentos não recebe o tutorial automático; pode iniciá-lo em Opções ou dizendo "iniciar tutorial".
+
 ## Memória e aprendizado (sem treinar modelo)
 O Rumi guarda, por usuário: como você chama cada gasto (“mercadinho” → Mercado), conta padrão, apelido. Aprende ao registrar, ao ser corrigido (“não, é lazer”) e ao ser ensinado (“quando eu disser pastelaria, é Restaurantes”). Tudo pode ser editado ou apagado em *O que o Rumi aprendeu*, e a memória pode ser desligada.
 

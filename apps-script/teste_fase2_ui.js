@@ -10,7 +10,7 @@ const root = path.join(__dirname, '..');
     console.log(nome);
     const ctx = await b.newContext({ viewport: vp, acceptDownloads: true }); const pg = await ctx.newPage(); const erros = [];
     pg.on('pageerror', e => erros.push(e.message)); pg.on('dialog', d => d.accept());
-    await pg.goto('http://localhost:8098/index.html?q=1&demo'); await pg.waitForTimeout(2500);
+    await pg.goto('http://localhost:8098/index.html?q=1&demo&semintro'); await pg.waitForTimeout(2500);
     const nav = v => pg.evaluate(v => document.querySelector('#nav button[data-v=' + v + ']').click(), v).then(() => pg.waitForTimeout(800));
     // ---- agenda
     await nav('agenda');
